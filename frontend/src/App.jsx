@@ -1,0 +1,141 @@
+import { useState } from 'react';
+import HomePage from './pages/HomePage';
+import PersonaSelect from './pages/PersonaSelect';
+import LoadingScreen from './components/LoadingScreen';
+import ConversationInterface from './pages/ConversationInterface';
+import './App.css';
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
+const readFileAsBase64 = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const result = reader.result || '';
+    const base64 = typeof result === 'string' ? result.split(',')[1] || '' : '';
+    resolve(base64);
+  };
+  reader.onerror = reject;
+  reader.readAsDataURL(file);
+});
+
+function App() {
+  const [currentPage, setCurrentPage] = useState('persona'); // 'persona', 'home', 'loading', 'results', 'conversation'
+  const [selectedPersona, setSelectedPersona] = useState(null);
+  const [pitchData, setPitchData] = useState(null);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+  const [agentProgress, setAgentProgress] = useState({});
+
+  const handlePersonaSelect = (persona) => {
+    setSelectedPersona(persona);
+    setCurrentPage('home');
+  };
+
+  const handleBackToHome = () => {
+    setCurrentPage('home');
+    setPitchData(null);
+    setResult(null);
+  };
+
+  const handlePitchSubmit = async ({ formData, file }) => {
+    setPitchData({ formData, fileName: file?.name });
+    setError(null);
+    setCurrentPage('loading');
+    setAgentProgress({});
+
+    try {
+      let pitchFileBase64 = '';
+      if (file) {
+        pitchFileBase64 = await readFileAsBase64(file);
+      }
+
+      const payload = {
+        pitch_data: {
+          content: `${formData.problemStatement}\n\n${formData.solution}\n\n${formData.traction}`,
+          company_name: formData.companyName,
+          founder_name: '',
+          email: '',
+          industry: formData.industry,
+          stage: formData.currentStage,
+          pitch_file_name: file?.name,
+          pitch_file_base64: pitchFileBase64,
+        },
+        persona: selectedPersona,
+      };
+
+      // Start polling for progress
+      const pollInterval = setInterval(async () => {
+        try {
+          const progressRes = await fetch(`${API_BASE}/progress`);
+          if (progressRes.ok) {
+            const progress = await progressRes.json();
+            setAgentProgress(progress);
+          }
+        } catch (e) {
+          console.error('Progress poll error:', e);
+        }
+      }, 500);
+
+      const response = await fetch(`${API_BASE}/evaluate_pitch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      clearInterval(pollInterval);
+
+      if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(detail || 'Failed to submit pitch');
+      }
+
+      const data = await response.json();
+      setResult(data);
+      
+      // Pass pitch data with session_id to conversation interface
+      setPitchData({ 
+        formData, 
+        fileName: file?.name,
+        session_id: data.session_id 
+      });
+      
+      setCurrentPage('conversation');
+    } catch (e) {
+      console.error(e);
+      setError(e.message || 'Submission failed');
+      setCurrentPage('home');
+    }
+  };
+
+  const renderPage = () => {
+    switch (currentPage) {
+      case 'persona':
+        return <PersonaSelect onPersonaSelect={handlePersonaSelect} />;
+      case 'home':
+        return <HomePage onSubmit={handlePitchSubmit} />;
+      case 'loading':
+        return <LoadingScreen agentProgress={agentProgress} />;
+      case 'conversation':
+        return (
+          <ConversationInterface
+            pitch={pitchData?.formData}
+            persona={selectedPersona}
+            onBack={handleBackToHome}
+            evaluation={result}
+            sessionId={pitchData?.session_id}
+          />
+        );
+      default:
+        return <PersonaSelect onPersonaSelect={handlePersonaSelect} />;
+    }
+  };
+
+  return <>
+    {error && currentPage === 'home' && (
+      <div style={{ color: 'red', padding: '1rem' }}>Error: {error}</div>
+    )}
+    {renderPage()}
+  </>;
+}
+
+export default App;

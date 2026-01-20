@@ -1,0 +1,17 @@
+fastapi
+uvicorn[standard]
+Qdrant-client
+sentence-transformers
+requests
+python-dotenv
+python-pptx
+pdfplumber
+Pillow
+beautifulsoup4
+
+
+
+
+speechrecognition
+gTTS
+
