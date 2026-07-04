@@ -7,10 +7,10 @@ The VC Multi-Agent System is an AI-powered venture capital pitch evaluation plat
 ## System Architecture
 
 ### Technology Stack
-- **Backend**: Flask (Python)
+- **Backend**: FastAPI (Python)
 - **Frontend**: React with Tailwind CSS
-- **Database**: Qdrant (Vector Database)
-- **AI Model**: Mistral AI API
+- **Database**: Chroma (embedded, disk-persisted vector database)
+- **AI Model**: Gemini API (Gemma models)
 - **Embeddings**: Sentence Transformers
 - **Voice Processing**: SpeechRecognition + gTTS
 - **Audio Handling**: Base64 encoding/decoding
@@ -41,14 +41,13 @@ The system consists of seven specialized AI agents working in coordination:
 ### Prerequisites
 - Python 3.11+
 - Node.js 20+
-- Qdrant database (local or cloud)
-- Internet connection for Mistral API and speech services
+- Internet connection for the Gemini API and speech services
 
 ### Backend Setup
 
 1. Navigate to the backend directory:
 ```bash
-cd vc_multi_agent_system/backend
+cd backend
 ```
 
 2. Install Python dependencies:
@@ -57,33 +56,20 @@ pip install -r requirements.txt
 ```
 
 3. Set up environment variables:
-Create a `.env` file with:
-```
-MISTRAL_API_KEY=your-api-key-here
-MISTRAL_API_URL=https://api.mistral.ai/v1/chat/completions
-MISTRAL_MODEL=mistral-large-latest
-```
+`backend/config.py` only loads a `.env` file from the **project root** (not `backend/`). Copy `.env.example` to `.env` in the root folder and fill in your values - see `ENVIRONMENT_SETUP.md` for details.
 
-4. Start Qdrant database (if running locally):
-```bash
-# Using Docker (if available)
-docker run -p 6333:6333 qdrant/qdrant
-
-# Or install Qdrant locally following their documentation
-```
-
-5. Run the Flask backend:
+4. Run the backend:
 ```bash
 python main.py
 ```
 
-The backend will be available at `http://localhost:5000`
+The backend will be available at `http://localhost:8000` (Chroma persists to local disk automatically - no separate database service to start).
 
 ### Frontend Setup
 
 1. Navigate to the frontend directory:
 ```bash
-cd vc_multi_agent_system/frontend/vc-frontend
+cd frontend
 ```
 
 2. Install dependencies:
@@ -107,13 +93,18 @@ The frontend will be available at `http://localhost:5173`
 ```json
 {
   "message": "Your message here",
-  "history": [{"role": "user", "content": "Previous message"}]
+  "history": [{"role": "user", "content": "Previous message"}],
+  "pitch_context": {"company_name": "...", "industry": "...", "stage": "..."},
+  "session_id": "optional - omit on first call, echo back on later ones"
 }
 ```
 - **Response**: 
 ```json
 {
-  "response": "AI response"
+  "response": "AI response",
+  "conversation_ended": false,
+  "end_reason": null,
+  "session_id": "server-generated or echoed session id"
 }
 ```
 
@@ -124,14 +115,16 @@ The frontend will be available at `http://localhost:5173`
 ```json
 {
   "audio": "base64_encoded_audio",
-  "history": [{"role": "user", "content": "Previous message"}]
+  "history": [{"role": "user", "content": "Previous message"}],
+  "session_id": "optional - omit on first call, echo back on later ones"
 }
 ```
 - **Response**: 
 ```json
 {
   "response_audio": "base64_encoded_audio_response",
-  "response_text": "Transcribed response text"
+  "response_text": "Transcribed response text",
+  "session_id": "server-generated or echoed session id"
 }
 ```
 
@@ -142,7 +135,10 @@ The frontend will be available at `http://localhost:5173`
 ```json
 {
   "pitch_data": {
-    "content": "Your startup pitch details"
+    "content": "Your startup pitch details",
+    "company_name": "optional",
+    "industry": "optional",
+    "stage": "optional"
   }
 }
 ```
@@ -152,11 +148,12 @@ The frontend will be available at `http://localhost:5173`
   "feedback": {
     "summary": "Overall evaluation summary",
     "details": {
-      "agent_name": {
-        "analysis_point": "detailed analysis"
-      }
+      "agent_name": { "analysis_point": "detailed analysis" }
     }
-  }
+  },
+  "agent_progress": [{"agent": "financial_analysis_agent", "status": "completed"}],
+  "deck_pages": [],
+  "session_id": "server-generated session id"
 }
 ```
 
@@ -232,9 +229,9 @@ The system implements a complete voice processing pipeline:
 
 1. **Frontend Audio Capture**: Web Audio API captures microphone input
 2. **Base64 Encoding**: Audio data encoded for transmission
-3. **Backend Processing**: Flask receives and decodes audio
+3. **Backend Processing**: FastAPI receives and decodes audio
 4. **Speech-to-Text**: SpeechRecognition transcribes audio to text
-5. **AI Processing**: Mistral AI processes the transcribed text
+5. **AI Processing**: Gemini processes the transcribed text
 6. **Text-to-Speech**: gTTS converts response to audio
 7. **Base64 Response**: Audio response encoded and sent to frontend
 8. **Frontend Playback**: Browser plays the audio response
@@ -243,7 +240,7 @@ The system implements a complete voice processing pipeline:
 
 The Retrieval-Augmented Generation (RAG) system enhances responses by:
 
-1. **Document Ingestion**: Startup pitch data stored in Qdrant
+1. **Document Ingestion**: Startup pitch data stored in Chroma
 2. **Vector Embeddings**: Sentence transformers create embeddings
 3. **Similarity Search**: Relevant context retrieved based on queries
 4. **Context Enhancement**: Retrieved information augments AI responses
@@ -255,8 +252,7 @@ The Retrieval-Augmented Generation (RAG) system enhances responses by:
 
 **Backend not starting:**
 - Check Python dependencies are installed
-- Verify Qdrant database is running
-- Ensure environment variables are set correctly
+- Ensure environment variables are set correctly (see `ENVIRONMENT_SETUP.md`)
 
 **Voice features not working:**
 - Check microphone permissions in browser
@@ -264,18 +260,16 @@ The Retrieval-Augmented Generation (RAG) system enhances responses by:
 - Ensure audio format compatibility
 
 **Frontend not connecting to backend:**
-- Verify backend is running on port 5000
-- Check CORS settings in Flask application
+- Verify backend is running on port 8000
+- Check CORS settings in the FastAPI application
 - Ensure no firewall blocking connections
 
-**Qdrant connection issues:**
-- Verify Qdrant service is running
-- Check connection parameters
-- Ensure proper network configuration
+**Chroma data not persisting across restarts:**
+- Confirm `CHROMA_PERSIST_DIR` points to a writable, stable path (defaults to `./data/chroma_storage`)
+- Delete that directory to reset stored embeddings if data looks stale/corrupted
 
 ### Performance Optimization
 
-- Use local Qdrant instance for better performance
 - Implement caching for frequently accessed data
 - Optimize embedding generation for large datasets
 - Consider using local speech models for offline operation
