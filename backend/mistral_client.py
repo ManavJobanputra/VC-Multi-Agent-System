@@ -1,10 +1,21 @@
 import logging
+import threading
 import time
 from typing import List, Dict, Optional
 import requests
 from config import GEMINI_API_KEY, GEMINI_MODEL
 
 logger = logging.getLogger(__name__)
+
+# Every agent builds its own MistralClient, and market_analysis_agent alone
+# can fan out dozens of concurrent LLM calls (QUESTION_WORKERS x
+# SEARCH_WORKERS). Left unbounded, that burst starves other agents'
+# requests of the shared API quota (observed: MarcusAgent's call timing
+# out on all 3 retries during a single /evaluate_pitch run). Cap
+# in-flight requests to the Gemini API process-wide, across every
+# MistralClient instance.
+_API_CONCURRENCY_LIMIT = 4
+_api_semaphore = threading.Semaphore(_API_CONCURRENCY_LIMIT)
 
 
 def _messages_to_gemini(messages: List[Dict]) -> Dict:
@@ -82,7 +93,8 @@ class MistralClient:
             try:
                 logger.info(f"[MistralClient] Gemini request attempt {attempt+1}")
 
-                resp = self.session.post(url, json=payload, timeout=30)
+                with _api_semaphore:
+                    resp = self.session.post(url, json=payload, timeout=30)
 
                 logger.info(f"[MistralClient] Status: {resp.status_code}")
 
@@ -147,7 +159,8 @@ class MistralClient:
             try:
                 logger.info(f"[MistralClient] Vision request attempt {attempt+1}")
 
-                resp = self.session.post(url, json=payload, timeout=60)
+                with _api_semaphore:
+                    resp = self.session.post(url, json=payload, timeout=60)
 
                 logger.info(f"[MistralClient] Vision status: {resp.status_code}")
 
