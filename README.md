@@ -57,12 +57,7 @@ pip install -r requirements.txt
 ```
 
 3. Set up environment variables:
-Create a `.env` file with:
-```
-MISTRAL_API_KEY=your-api-key-here
-MISTRAL_API_URL=https://api.mistral.ai/v1/chat/completions
-MISTRAL_MODEL=mistral-large-latest
-```
+`backend/config.py` only loads a `.env` file from the **project root** (not `backend/`). Copy `.env.example` to `.env` in the root folder and fill in your values - see `ENVIRONMENT_SETUP.md` for details.
 
 4. Start Qdrant database (if running locally):
 ```bash
