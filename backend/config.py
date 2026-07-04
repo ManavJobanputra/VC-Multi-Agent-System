@@ -4,7 +4,11 @@ from dotenv import load_dotenv
 # Load environment variables from .env file in root folder
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
-# Mistral/OpenRouter Configuration
+# Gemini (Gemma) Configuration
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
+GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemma-4-31b-it')
+
+# Legacy OpenRouter/Mistral Configuration (kept for backward compatibility)
 OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY', '')
 MISTRAL_MODEL = os.getenv('MISTRAL_MODEL', 'mistralai/mistral-7b-instruct-v0.1')
 
@@ -22,5 +26,5 @@ HOST = os.getenv('HOST', '0.0.0.0')
 PORT = int(os.getenv('PORT', 8000))
 
 # Validate critical configuration
-if not OPENROUTER_API_KEY:
-    raise ValueError("OPENROUTER_API_KEY environment variable is not set. Please add it to your .env file.")
+if not GEMINI_API_KEY:
+    raise ValueError("GEMINI_API_KEY environment variable is not set. Please add it to your .env file.")

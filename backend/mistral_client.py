@@ -2,28 +2,59 @@ import logging
 import time
 from typing import List, Dict, Optional
 import requests
-from config import OPENROUTER_API_KEY, MISTRAL_MODEL
+from config import GEMINI_API_KEY, GEMINI_MODEL
 
 logger = logging.getLogger(__name__)
 
 
+def _messages_to_gemini(messages: List[Dict]) -> Dict:
+    """Convert OpenAI-style {role, content} messages into Gemini's
+    {system_instruction, contents} request shape."""
+    system_parts = []
+    contents = []
+    for msg in messages:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        if role == "system":
+            system_parts.append(content)
+            continue
+        gemini_role = "model" if role == "assistant" else "user"
+        contents.append({"role": gemini_role, "parts": [{"text": content}]})
+
+    system_parts.append(
+        "Do not show your reasoning, planning, or draft attempts. "
+        "Respond with ONLY your final answer text, nothing else."
+    )
+    payload = {"contents": contents}
+    payload["systemInstruction"] = {"parts": [{"text": "\n".join(system_parts)}]}
+    return payload
+
+
+# gemma-4-31b-it spends part of its output budget on hidden "thought" tokens
+# before producing the visible answer; pad maxOutputTokens so the answer
+# itself doesn't get starved and truncated by MAX_TOKENS.
+THINKING_TOKEN_BUFFER = 1024
+
+
+def _extract_text(data: Dict) -> str:
+    candidates = data.get("candidates") or []
+    if not candidates:
+        return ""
+    parts = (candidates[0].get("content") or {}).get("parts") or []
+    return "".join(p.get("text", "") for p in parts if not p.get("thought")).strip()
+
+
 class MistralClient:
     def __init__(self):
-        self.api_key = OPENROUTER_API_KEY
-        self.model = MISTRAL_MODEL
-        self.openrouter_url = "https://openrouter.ai/api/v1"
+        self.api_key = GEMINI_API_KEY
+        self.model = GEMINI_MODEL
+        self.base_url = "https://generativelanguage.googleapis.com/v1beta/models"
         self.session = requests.Session()
 
-        masked_key = self.api_key[:4] + "..." + self.api_key[-4:]
+        masked_key = self.api_key[:4] + "..." + self.api_key[-4:] if len(self.api_key) > 8 else "****"
         logger.info(
-            f"MistralClient initialized | model={self.model} | key={masked_key}"
+            f"MistralClient (Gemini) initialized | model={self.model} | key={masked_key}"
         )
-
-    def _headers(self) -> Dict[str, str]:
-        return {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
 
     def call_openrouter_api(
         self,
@@ -32,55 +63,38 @@ class MistralClient:
         max_tokens: int = 500,
         options: dict = None,
     ) -> str:
-        """
-        EXACT same OpenRouter usage pattern as LLMBrain
-        """
+        """Calls Gemini's generateContent API for a Gemma model.
 
-        payload = {
-            "model": self.model,
-            "messages": messages,
+        Name kept as call_openrouter_api for compatibility with existing
+        agent call sites.
+        """
+        payload = _messages_to_gemini(messages)
+        payload["generationConfig"] = {
             "temperature": temperature,
-            "max_tokens": max_tokens,
+            "maxOutputTokens": max_tokens + THINKING_TOKEN_BUFFER,
         }
-
         if options:
-            payload.update(options)
+            payload["generationConfig"].update(options)
 
-        url = f"{self.openrouter_url}/chat/completions"
+        url = f"{self.base_url}/{self.model}:generateContent?key={self.api_key}"
 
         for attempt in range(3):
             try:
-                logger.info(f"[MistralClient] OpenRouter request attempt {attempt+1}")
+                logger.info(f"[MistralClient] Gemini request attempt {attempt+1}")
 
-                resp = self.session.post(
-                    url,
-                    json=payload,
-                    headers=self._headers(),
-                    timeout=30,
-                )
+                resp = self.session.post(url, json=payload, timeout=30)
 
                 logger.info(f"[MistralClient] Status: {resp.status_code}")
 
                 if resp.status_code != 200:
                     logger.error(
-                        f"[MistralClient] OpenRouter API error: "
+                        f"[MistralClient] Gemini API error: "
                         f"{resp.status_code} {resp.text}"
                     )
                     time.sleep(2 ** attempt)
                     continue
 
-                data = resp.json()
-
-                # 🔒 SAME parsing logic as LLMBrain
-                choice = (data.get("choices") or [{}])[0]
-                message = choice.get("message") or {}
-
-                if isinstance(message, dict):
-                    content = message.get("content") or ""
-                else:
-                    content = choice.get("text") or ""
-
-                result = (content or "").strip()
+                result = _extract_text(resp.json())
                 logger.info(
                     f"[MistralClient] Extracted content length: {len(result)}"
                 )
@@ -109,38 +123,31 @@ class MistralClient:
         max_tokens: int = 200,
         model: Optional[str] = None,
     ) -> str:
-        """Send image + prompt to a vision-capable OpenRouter model (hardcoded config)."""
-
+        """Send image + prompt to Gemini for a Gemma vision-capable model."""
+        target_model = model or self.model
         payload = {
-            "model": model or self.model,
-            "messages": [
+            "contents": [
                 {
                     "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/png;base64,{image_base64}"},
-                        },
+                    "parts": [
+                        {"text": prompt},
+                        {"inline_data": {"mime_type": "image/png", "data": image_base64}},
                     ],
                 }
             ],
-            "temperature": temperature,
-            "max_tokens": max_tokens,
+            "generationConfig": {
+                "temperature": temperature,
+                "maxOutputTokens": max_tokens + THINKING_TOKEN_BUFFER,
+            },
         }
 
-        url = f"{self.openrouter_url}/chat/completions"
+        url = f"{self.base_url}/{target_model}:generateContent?key={self.api_key}"
 
         for attempt in range(3):
             try:
                 logger.info(f"[MistralClient] Vision request attempt {attempt+1}")
 
-                resp = self.session.post(
-                    url,
-                    json=payload,
-                    headers=self._headers(),
-                    timeout=60,
-                )
+                resp = self.session.post(url, json=payload, timeout=60)
 
                 logger.info(f"[MistralClient] Vision status: {resp.status_code}")
 
@@ -151,16 +158,7 @@ class MistralClient:
                     time.sleep(2 ** attempt)
                     continue
 
-                data = resp.json()
-                choice = (data.get("choices") or [{}])[0]
-                message = choice.get("message") or {}
-
-                if isinstance(message, dict):
-                    content = message.get("content") or ""
-                else:
-                    content = choice.get("text") or ""
-
-                result = (content or "").strip()
+                result = _extract_text(resp.json())
                 logger.info(
                     f"[MistralClient] Vision extracted content length: {len(result)}"
                 )
