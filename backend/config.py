@@ -6,7 +6,7 @@ load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 # Gemini (Gemma) Configuration
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
-GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemma-4-31b-it')
+GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
 
 # Legacy OpenRouter/Mistral Configuration (kept for backward compatibility)
 OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY', '')

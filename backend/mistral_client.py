@@ -32,19 +32,10 @@ def _messages_to_gemini(messages: List[Dict]) -> Dict:
         gemini_role = "model" if role == "assistant" else "user"
         contents.append({"role": gemini_role, "parts": [{"text": content}]})
 
-    system_parts.append(
-        "Do not show your reasoning, planning, or draft attempts. "
-        "Respond with ONLY your final answer text, nothing else."
-    )
     payload = {"contents": contents}
-    payload["systemInstruction"] = {"parts": [{"text": "\n".join(system_parts)}]}
+    if system_parts:
+        payload["systemInstruction"] = {"parts": [{"text": "\n".join(system_parts)}]}
     return payload
-
-
-# gemma-4-31b-it spends part of its output budget on hidden "thought" tokens
-# before producing the visible answer; pad maxOutputTokens so the answer
-# itself doesn't get starved and truncated by MAX_TOKENS.
-THINKING_TOKEN_BUFFER = 1024
 
 
 def _extract_text(data: Dict) -> str:
@@ -74,7 +65,7 @@ class MistralClient:
         max_tokens: int = 500,
         options: dict = None,
     ) -> str:
-        """Calls Gemini's generateContent API for a Gemma model.
+        """Calls Gemini's generateContent API.
 
         Name kept as call_openrouter_api for compatibility with existing
         agent call sites.
@@ -82,7 +73,8 @@ class MistralClient:
         payload = _messages_to_gemini(messages)
         payload["generationConfig"] = {
             "temperature": temperature,
-            "maxOutputTokens": max_tokens + THINKING_TOKEN_BUFFER,
+            "maxOutputTokens": max_tokens,
+            "thinkingConfig": {"thinkingBudget": 0},
         }
         if options:
             payload["generationConfig"].update(options)
@@ -135,7 +127,7 @@ class MistralClient:
         max_tokens: int = 200,
         model: Optional[str] = None,
     ) -> str:
-        """Send image + prompt to Gemini for a Gemma vision-capable model."""
+        """Send image + prompt to a vision-capable Gemini model."""
         target_model = model or self.model
         payload = {
             "contents": [
@@ -149,7 +141,8 @@ class MistralClient:
             ],
             "generationConfig": {
                 "temperature": temperature,
-                "maxOutputTokens": max_tokens + THINKING_TOKEN_BUFFER,
+                "maxOutputTokens": max_tokens,
+                "thinkingConfig": {"thinkingBudget": 0},
             },
         }
 
