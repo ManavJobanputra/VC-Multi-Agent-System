@@ -5,15 +5,17 @@ vc_multi_agent_system/
 ├── README.md                           # Comprehensive documentation
 ├── setup.sh                           # Automated setup script
 ├── todo.md                            # Development progress tracker
+├── .env                               # Environment variables (root only - see ENVIRONMENT_SETUP.md)
 ├── 
-├── backend/                           # Flask backend application
-│   ├── .env                          # Environment variables
+├── backend/                           # FastAPI backend application
 │   ├── requirements.txt              # Python dependencies
-│   ├── main.py                       # Main Flask application
-│   ├── mistral_client.py            # Mistral AI API client
-│   ├── qdrant_client.py             # Qdrant vector database client
-│   ├── rag_system.py                # RAG implementation
-│   └── voice_processing.py          # Voice input/output processing
+│   ├── config.py                     # Loads and validates env vars
+│   ├── main.py                       # Main FastAPI application
+│   ├── mistral_client.py             # Gemini (Gemma) API client
+│   ├── chroma_manager.py             # Chroma vector database client
+│   ├── rag_system.py                 # RAG implementation
+│   ├── deck_processor.py             # Pitch deck (PDF/PPTX) ingestion
+│   └── voice_processing.py           # Voice input/output processing
 │
 ├── agents/                           # Multi-agent system components
 │   ├── __init__.py                  # Package initialization
@@ -24,30 +26,33 @@ vc_multi_agent_system/
 │   ├── risk_assessment_agent.py     # Risk assessment specialist
 │   ├── team_assessment_agent.py     # Team evaluation specialist
 │   ├── marcus_agent.py              # Strategic advisor agent
-│   └── execution_agent.py           # Implementation simulator agent
+│   ├── execution_agent.py           # Implementation simulator agent
+│   ├── answer_validation_agent.py   # Validates founder answers vs. findings
+│   └── analysis_agent.py            # Comprehensive investment analysis
 │
 ├── frontend/                        # React frontend application
-│   └── vc-frontend/                 # React app directory
-│       ├── package.json             # Node.js dependencies
-│       ├── index.html               # HTML entry point
-│       ├── src/
-│       │   ├── App.jsx              # Main React component
-│       │   ├── App.css              # Application styles
-│       │   ├── main.jsx             # React entry point
-│       │   └── components/          # UI components (shadcn/ui)
-│       └── public/                  # Static assets
+│   ├── package.json                 # Node.js dependencies
+│   ├── index.html                   # HTML entry point
+│   ├── src/
+│   │   ├── App.jsx                  # Main React component
+│   │   ├── App.css                  # Application styles
+│   │   ├── main.jsx                 # React entry point
+│   │   ├── pages/                   # Route-level pages
+│   │   └── components/              # UI components (shadcn/ui)
+│   └── public/                      # Static assets
 │
-└── data/                            # Data storage directory
-    └── (Vector embeddings and cached data)
+└── data/                            # Local Chroma storage (embeddings/cache)
 ```
 
 ## Key Files Description
 
 ### Backend Core Files
-- **main.py**: Flask application with API endpoints for chat, voice, and pitch evaluation
-- **mistral_client.py**: Handles communication with Mistral AI API
-- **qdrant_client.py**: Manages vector database operations and embeddings
+- **main.py**: FastAPI application with API endpoints for chat, voice, and pitch evaluation
+- **config.py**: Loads and validates environment variables from the root `.env`
+- **mistral_client.py**: Handles communication with the Gemini API (Gemma models)
+- **chroma_manager.py**: Manages the embedded Chroma vector database and embeddings
 - **rag_system.py**: Implements Retrieval-Augmented Generation for contextual responses
+- **deck_processor.py**: Extracts text/images from uploaded pitch decks (PDF/PPTX)
 - **voice_processing.py**: Handles speech-to-text and text-to-speech conversion
 
 ### Agent System Files
@@ -59,6 +64,8 @@ vc_multi_agent_system/
 - **team_assessment_agent.py**: Evaluates founding team capabilities
 - **marcus_agent.py**: Provides strategic mentorship and guidance
 - **execution_agent.py**: Simulates implementation outcomes
+- **answer_validation_agent.py**: Validates founder answers against market data and agent findings
+- **analysis_agent.py**: Generates comprehensive investment analysis from conversation history
 
 ### Frontend Files
 - **App.jsx**: Main React component with chat interface and pitch evaluation
