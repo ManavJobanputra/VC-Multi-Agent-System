@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 
 from agents.base_agent import BaseAgent
 from backend.mistral_client import MistralClient
-from backend.qdrant_manager import QdrantManager
+from backend.chroma_manager import ChromaManager
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ class MarketAnalysisAgent(BaseAgent):
             "Market opportunity, competitors, pricing, and TAM analysis"
         )
         self.llm = MistralClient()
-        self.qdrant = QdrantManager(collection_name="vc_pitches_market")
+        self.chroma = ChromaManager(collection_name="vc_pitches_market")
 
         # HARD GUARANTEES / LIMITS
         self.SEARCH_QUERIES_PER_QUESTION = 3
@@ -217,9 +217,9 @@ Rules:
             "stage": pitch_data.get("stage", ""),
         }
         try:
-            self.qdrant.upsert_data([text], [metadata])
+            self.chroma.upsert_data([text], [metadata])
         except Exception as e:
-            logger.error(f"Qdrant upsert failed: {e}")
+            logger.error(f"Chroma upsert failed: {e}")
 
     # ==============================================================
     # 8. Process ONE question (runs in parallel)

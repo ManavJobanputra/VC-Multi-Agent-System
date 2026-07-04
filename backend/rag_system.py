@@ -1,16 +1,16 @@
-from qdrant_manager import QdrantManager
+from chroma_manager import ChromaManager
 from mistral_client import MistralClient
 from typing import List, Dict
 
 
 class RAGSystem:
-    def __init__(self, qdrant_manager: QdrantManager, mistral_client: MistralClient):
-        self.qdrant_manager = qdrant_manager
+    def __init__(self, chroma_manager: ChromaManager, mistral_client: MistralClient):
+        self.chroma_manager = chroma_manager
         self.mistral_client = mistral_client
 
     def retrieve_and_generate(self, query: str, conversation_history: List[Dict]) -> str:
-        # Retrieve relevant documents from Qdrant
-        retrieved_docs = self.qdrant_manager.search(query)
+        # Retrieve relevant documents from Chroma
+        retrieved_docs = self.chroma_manager.search(query)
 
         context = ""
         if retrieved_docs:

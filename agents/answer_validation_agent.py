@@ -1,7 +1,7 @@
 from agents.base_agent import BaseAgent
 from typing import Dict, List, Optional
 from backend.mistral_client import MistralClient
-from backend.qdrant_manager import QdrantManager
+from backend.chroma_manager import ChromaManager
 import logging
 import json
 
@@ -11,13 +11,13 @@ class AnswerValidationAgent(BaseAgent):
     def __init__(self):
         super().__init__("Answer Validation Agent", "Validates founder answers against market data and agent analysis")
         self.mistral_client = MistralClient()
-        self.qdrant_manager = QdrantManager()
+        self.chroma_manager = ChromaManager()
 
     def validate_answer(self, question: str, answer: str, session_id: str, pitch_context: Dict) -> Dict:
         """
         Validate founder's answer against:
         1. Market analysis data
-        2. Agent findings stored in Qdrant
+        2. Agent findings stored in Chroma
         3. Industry benchmarks
         4. Pitch context
         
@@ -25,9 +25,9 @@ class AnswerValidationAgent(BaseAgent):
         """
         logger.info(f"Validating answer for session {session_id}")
         
-        # Step 1: Retrieve relevant market data and agent analyses from Qdrant
+        # Step 1: Retrieve relevant market data and agent analyses from Chroma
         query = f"{question} {answer} {pitch_context.get('industry', '')} {pitch_context.get('company_name', '')}"
-        rag_results = self.qdrant_manager.search(query, limit=10, session_filter=session_id)
+        rag_results = self.chroma_manager.search(query, limit=10, session_filter=session_id)
         
         # Organize retrieved context
         agent_findings = []

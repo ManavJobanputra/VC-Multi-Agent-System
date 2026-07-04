@@ -1,7 +1,7 @@
 from agents.base_agent import BaseAgent
 from typing import Dict, List, Optional
 from backend.mistral_client import MistralClient
-from backend.qdrant_manager import QdrantManager
+from backend.chroma_manager import ChromaManager
 import logging
 import json
 
@@ -11,7 +11,7 @@ class AnalysisAgent(BaseAgent):
     def __init__(self):
         super().__init__("Analysis Agent", "Generates comprehensive investment analysis from conversation and agent findings")
         self.mistral_client = MistralClient()
-        self.qdrant_manager = QdrantManager()
+        self.chroma_manager = ChromaManager()
 
     def generate_investment_analysis(
         self, 
@@ -27,7 +27,7 @@ class AnalysisAgent(BaseAgent):
         """
         logger.info(f"Generating investment analysis for session {session_id}")
         
-        # Step 1: Retrieve Q&A pairs from Qdrant
+        # Step 1: Retrieve Q&A pairs from Chroma
         qa_pairs = self._retrieve_qa_pairs(session_id, pitch_context)
         
         # Step 2: Retrieve agent analyses
@@ -49,7 +49,7 @@ class AnalysisAgent(BaseAgent):
         try:
             company_name = pitch_context.get('companyName') or pitch_context.get('company_name', '')
             query = f"Q&A pairs {company_name}"
-            results = self.qdrant_manager.search(query, limit=30, session_filter=session_id)
+            results = self.chroma_manager.search(query, limit=30, session_filter=session_id)
             
             qa_pairs = []
             for doc in results:
@@ -68,7 +68,7 @@ class AnalysisAgent(BaseAgent):
         try:
             company_name = pitch_context.get('companyName') or pitch_context.get('company_name', '')
             query = f"agent analysis {company_name}"
-            results = self.qdrant_manager.search(query, limit=20, session_filter=session_id)
+            results = self.chroma_manager.search(query, limit=20, session_filter=session_id)
             
             agent_findings = []
             for doc in results:
@@ -89,7 +89,7 @@ class AnalysisAgent(BaseAgent):
         """Retrieve all answer validations."""
         try:
             query = "answer validation"
-            results = self.qdrant_manager.search(query, limit=20, session_filter=session_id)
+            results = self.chroma_manager.search(query, limit=20, session_filter=session_id)
             
             validations = []
             for doc in results:

@@ -1,7 +1,7 @@
 from agents.base_agent import BaseAgent
 from typing import Dict, List, Optional
 from backend.mistral_client import MistralClient
-from backend.qdrant_manager import QdrantManager
+from backend.chroma_manager import ChromaManager
 import logging
 import json
 
@@ -11,7 +11,7 @@ class MarcusAgent(BaseAgent):
     def __init__(self):
         super().__init__("Marcus Agent", "Senior strategic advisor and mentor")
         self.mistral_client = MistralClient()
-        self.qdrant_manager = QdrantManager()
+        self.chroma_manager = ChromaManager()
         self.persona = None
 
     def set_persona(self, persona: Optional[Dict]):
@@ -65,7 +65,7 @@ You are {self.persona.get('name', 'Marcus')}, a {self.persona.get('title', 'stra
             prompt_parts.append(f"\n{agent_name.replace('_', ' ').title()} Analysis:\n" + json.dumps(result, indent=2))
         
         if context_docs:
-            prompt_parts.append("\n---\n\nRelevant Historical Context/Memory from Qdrant:\n")
+            prompt_parts.append("\n---\n\nRelevant Historical Context/Memory from Chroma:\n")
             for doc in context_docs:
                 payload = doc.get('payload', {})
                 content = payload.get('content') or f"Page {payload.get('page_number', '?')}: [reference]"
@@ -84,15 +84,15 @@ You are {self.persona.get('name', 'Marcus')}, a {self.persona.get('title', 'stra
         # Step 1: Inject Startup Memory (Optional)
         context_docs = []
         try:
-            query_for_qdrant = pitch_data.get("content", "")
-            if not query_for_qdrant and evaluation_results:
-                query_for_qdrant = " ".join([json.dumps(res) for res in evaluation_results.values()])
+            query_text = pitch_data.get("content", "")
+            if not query_text and evaluation_results:
+                query_text = " ".join([json.dumps(res) for res in evaluation_results.values()])
 
-            if query_for_qdrant:
-                context_docs = self.qdrant_manager.search(query_for_qdrant, limit=3)
-                logger.info(f"Marcus Agent: Retrieved {len(context_docs)} context documents from Qdrant.")
+            if query_text:
+                context_docs = self.chroma_manager.search(query_text, limit=3)
+                logger.info(f"Marcus Agent: Retrieved {len(context_docs)} context documents from Chroma.")
         except Exception as e:
-            logger.warning(f"Marcus Agent: Could not retrieve context from Qdrant: {e}")
+            logger.warning(f"Marcus Agent: Could not retrieve context from Chroma: {e}")
             context_docs = []
 
         # Step 2: Build a Chain-of-Thought Prompt

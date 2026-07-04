@@ -15,7 +15,7 @@ import logging
 from config import HOST, PORT, DEBUG
 
 from mistral_client import MistralClient
-from qdrant_manager import QdrantManager
+from chroma_manager import ChromaManager
 from rag_system import RAGSystem
 from deck_processor import process_pitch_file, build_page_documents
 from agents.evaluation_orchestrator import EvaluationOrchestrator
@@ -80,8 +80,8 @@ app.add_middleware(
 
 # Initialize components
 mistral_client = MistralClient()
-qdrant_manager = QdrantManager()
-rag_system = RAGSystem(qdrant_manager, mistral_client)
+chroma_manager = ChromaManager()
+rag_system = RAGSystem(chroma_manager, mistral_client)
 voice_processor = VoiceProcessor()
 
 # Initialize agents
@@ -130,7 +130,7 @@ def chat(req: ChatRequest):
     
     # Prepare RAG context from conversation history and agent analyses - FILTER BY SESSION
     rag_query = req.message
-    rag_results = qdrant_manager.search(rag_query, limit=5, session_filter=session_id)
+    rag_results = chroma_manager.search(rag_query, limit=5, session_filter=session_id)
     
     # Organize RAG results by type for better context
     agent_analyses = []
@@ -262,7 +262,7 @@ def chat(req: ChatRequest):
     if not response_text.strip():
         raise HTTPException(status_code=502, detail="Failed to get a response from the AI model")
 
-    # Store Q&A pair with validation in structured format to Qdrant
+    # Store Q&A pair with validation in structured format to Chroma
     try:
         qa_pair = {
             "question": last_question or "Initial greeting",
@@ -295,13 +295,13 @@ def chat(req: ChatRequest):
                 "content": f"Validation for '{last_question}': {validation_result.get('validation', '')}"
             })
         
-        qdrant_manager.upsert_data(
+        chroma_manager.upsert_data(
             [req.message, response_text, qa_text] + ([validation_result.get('validation', '')] if validation_result else []),
             metadata_list
         )
-        logger.info(f"Stored Q&A pair to Qdrant for session {session_id}")
+        logger.info(f"Stored Q&A pair to Chroma for session {session_id}")
     except Exception as e:
-        logger.warning(f"Could not store Q&A pair to Qdrant: {e}")
+        logger.warning(f"Could not store Q&A pair to Chroma: {e}")
     
     # Check if agent thinks they have enough info to end conversation
     history_summary = "\n".join([f"{msg.get('role')}: {msg.get('content')[:150]}..." for msg in req.history[-5:]])
@@ -329,9 +329,9 @@ def chat(req: ChatRequest):
     end_decision = mistral_client.call_openrouter_api(end_check_messages).strip().upper()
     conversation_ended = "END_CONVERSATION" in end_decision
     
-    # Store in Qdrant for RAG retrieval with SESSION ID
+    # Store in Chroma for RAG retrieval with SESSION ID
     try:
-        qdrant_manager.upsert_data(
+        chroma_manager.upsert_data(
             [req.message, response_text],
             [
                 {"type": "user_message", "conversation": True, "session_id": session_id, "content": req.message},
@@ -339,7 +339,7 @@ def chat(req: ChatRequest):
             ]
         )
     except Exception as e:
-        logger.warning(f"Could not store conversation to Qdrant: {e}")
+        logger.warning(f"Could not store conversation to Chroma: {e}")
     
     return {
         "response": response_text,
@@ -371,7 +371,7 @@ def voice_chat(req: VoiceChatRequest):
         context_prompt = f"Context: Company {req.pitch_context.get('company_name')}, {req.pitch_context.get('industry')}, Stage: {req.pitch_context.get('stage')}\n"
     
     # Prepare RAG context - FILTER BY SESSION (enhanced with agent analyses)
-    rag_results = qdrant_manager.search(transcribed_text, limit=5, session_filter=session_id)
+    rag_results = chroma_manager.search(transcribed_text, limit=5, session_filter=session_id)
     
     # Organize RAG results by type for better context
     agent_analyses = []
@@ -449,9 +449,9 @@ def voice_chat(req: VoiceChatRequest):
     # Generate response audio
     response_audio_base64 = voice_processor.generate_audio(response_text)
     
-    # Store in Qdrant for RAG retrieval with SESSION ID
+    # Store in Chroma for RAG retrieval with SESSION ID
     try:
-        qdrant_manager.upsert_data(
+        chroma_manager.upsert_data(
             [transcribed_text, response_text],
             [
                 {"type": "user_voice_message", "conversation": True, "session_id": session_id, "content": transcribed_text},
@@ -459,13 +459,13 @@ def voice_chat(req: VoiceChatRequest):
             ]
         )
     except Exception as e:
-        logger.warning(f"Could not store voice conversation to Qdrant: {e}")
+        logger.warning(f"Could not store voice conversation to Chroma: {e}")
     
     return {"response_audio": response_audio_base64, "response_text": response_text, "session_id": session_id}
 
 
-def _store_agent_results_to_qdrant(session_id: str, pitch_data: Dict, evaluation_results: Dict):
-    """Store all agent evaluation results to Qdrant for RAG retrieval."""
+def _store_agent_results_to_chroma(session_id: str, pitch_data: Dict, evaluation_results: Dict):
+    """Store all agent evaluation results to Chroma for RAG retrieval."""
     try:
         texts_to_store = []
         metadatas_to_store = []
@@ -504,12 +504,12 @@ def _store_agent_results_to_qdrant(session_id: str, pitch_data: Dict, evaluation
                     "content": agent_text[:1000]
                 })
         
-        # Upsert to Qdrant
+        # Upsert to Chroma
         if texts_to_store:
-            qdrant_manager.upsert_data(texts_to_store, metadatas_to_store)
-            logger.info(f"Stored {len(texts_to_store)} agent result documents to Qdrant for session {session_id}")
+            chroma_manager.upsert_data(texts_to_store, metadatas_to_store)
+            logger.info(f"Stored {len(texts_to_store)} agent result documents to Chroma for session {session_id}")
     except Exception as e:
-        logger.warning(f"Could not store agent results to Qdrant: {e}")
+        logger.warning(f"Could not store agent results to Chroma: {e}")
 
 
 @app.post("/evaluate_pitch")
@@ -543,7 +543,7 @@ def evaluate_pitch(req: EvaluatePitchRequest):
             # Add session_id to each doc's metadata
             for doc in docs:
                 doc["metadata"]["session_id"] = session_id
-            qdrant_manager.upsert_data(
+            chroma_manager.upsert_data(
                 [d["text"] for d in docs],
                 [d["metadata"] for d in docs]
             )
@@ -552,8 +552,8 @@ def evaluate_pitch(req: EvaluatePitchRequest):
     processed_pitch = orchestrator.ingest_pitch(pitch_data)
     evaluation_results, progress = orchestrator.coordinate_evaluation(processed_pitch, agents, progress_callback=lambda agent_name, status: _update_progress(agent_name, status))
     
-    # Store all agent results to Qdrant for RAG retrieval
-    _store_agent_results_to_qdrant(session_id, pitch_data, evaluation_results)
+    # Store all agent results to Chroma for RAG retrieval
+    _store_agent_results_to_chroma(session_id, pitch_data, evaluation_results)
     
     # Pass persona to Marcus agent
     marcus_agent = agents["marcus_agent"]
