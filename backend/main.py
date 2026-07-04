@@ -259,7 +259,9 @@ def chat(req: ChatRequest):
         messages.append({"role": "user", "content": user_content})
     
     response_text = mistral_client.call_openrouter_api(messages)
-    
+    if not response_text.strip():
+        raise HTTPException(status_code=502, detail="Failed to get a response from the AI model")
+
     # Store Q&A pair with validation in structured format to Qdrant
     try:
         qa_pair = {
@@ -441,6 +443,8 @@ def voice_chat(req: VoiceChatRequest):
     
     response_text = mistral_client.call_openrouter_api(messages)
     logger.info(f"LLM Response: {response_text}")
+    if not response_text.strip():
+        raise HTTPException(status_code=502, detail="Failed to get a response from the AI model")
 
     # Generate response audio
     response_audio_base64 = voice_processor.generate_audio(response_text)
