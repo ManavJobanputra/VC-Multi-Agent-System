@@ -115,6 +115,8 @@ config.local.py
 
 # Qdrant local storage
 qdrant_storage/
+chroma_storage/
+data/chroma_storage/
 
 # Yarn
 .yarn/cache

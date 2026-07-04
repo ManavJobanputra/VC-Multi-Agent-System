@@ -12,10 +12,9 @@ GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemma-4-31b-it')
 OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY', '')
 MISTRAL_MODEL = os.getenv('MISTRAL_MODEL', 'mistralai/mistral-7b-instruct-v0.1')
 
-# Qdrant Configuration
-QDRANT_URL = os.getenv('QDRANT_URL', 'http://localhost:6333')
-QDRANT_API_KEY = os.getenv('QDRANT_API_KEY', '')
-QDRANT_COLLECTION = os.getenv('QDRANT_COLLECTION', 'vc_pitches')
+# Chroma Configuration
+CHROMA_PERSIST_DIR = os.getenv('CHROMA_PERSIST_DIR', os.path.join(os.path.dirname(__file__), '..', 'data', 'chroma_storage'))
+CHROMA_COLLECTION = os.getenv('CHROMA_COLLECTION', 'vc_pitches')
 
 # Voice Processing Configuration
 SPEECH_RECOGNITION_LANGUAGE = os.getenv('SPEECH_RECOGNITION_LANGUAGE', 'en-US')
