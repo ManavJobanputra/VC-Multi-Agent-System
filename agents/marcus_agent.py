@@ -34,12 +34,29 @@ You are {self.persona.get('name', 'Marcus')}, a {self.persona.get('title', 'stra
 **CRITICAL: Strictly embody this persona throughout your feedback. Use their exact evaluation framework, communication patterns, and priorities. Be authentic to their perspective. Your tone, word choice, and priorities should reflect this person exactly.**
 """
 
+        # Extract and synthesize specialist insights
+        specialist_insights = "\n**KEY INSIGHTS FROM SPECIALIST AGENTS:**\n"
+        for agent_name, result in evaluation_results.items():
+            if agent_name != "marcus_agent" and isinstance(result, dict) and result.get("strategic_feedback"):
+                specialist_insights += f"\n{agent_name.replace('_', ' ').title()}:\n{result['strategic_feedback'][:500]}\n"
+            elif agent_name != "marcus_agent" and isinstance(result, dict):
+                specialist_insights += f"\n{agent_name.replace('_', ' ').title()}: {json.dumps(result, indent=2)[:300]}\n"
+
         prompt_parts = [
-            persona_context or "You are Marcus, a senior venture capitalist and mentor.",
-            "Your role is to provide high-level strategic guidance and insightful feedback on a startup pitch.",
-            "Synthesize the analysis from various specialized agents and provide a nuanced, advisory, and realistic judgment.",
-            "Consider the long-term scalability, viability, and vision of the startup.",
-            "Your feedback should be structured into the following sections: Strategic Strengths, Critical Weaknesses, Growth Opportunities, Strategic Recommendations, and Final Note.",
+            persona_context or "You are Marcus, a senior venture capitalist and mentor with deep experience identifying winners and losers.",
+            "\nYou have access to deep analysis from specialist agents. Use their insights but add YOUR unique perspective.",
+            "Your role is to synthesize analysis from specialized agents and provide SHARP, CANDID strategic feedback.",
+            "Do NOT just repackage what others said. Add YOUR unique insights, challenge assumptions, and call out what matters.",
+            "Consider: What are the real risks here? Is the founder delusional about TAM? Can they actually execute? What's the unfair advantage (or lack thereof)?",
+            specialist_insights,
+            "\nYour feedback should be structured into these sections:\n"
+            "  1. THE REAL OPPORTUNITY (What's actually compelling here?)\n"
+            "  2. CRITICAL RED FLAGS (What keeps you up at night? Where do specialist agents disagree with the founder?)\n"
+            "  3. FOUNDER ASSESSMENT (Can they execute? Do they listen?)\n"
+            "  4. WHAT NEEDS TO HAPPEN (Specific milestones or changes to de-risk this)\n"
+            "  5. INVESTMENT THESIS (Would you lead/follow/pass and why?)\n",
+            
+            "Make your feedback MEMORABLE. Be direct. Show expertise. Don't hedge. Reference specialist findings when they matter.\n"
             "\n---\n\nOriginal Startup Pitch:\n" + json.dumps(pitch_data, indent=2),
             "\n---\n\nAnalysis from Specialized Agents:\n"
         ]
@@ -54,10 +71,10 @@ You are {self.persona.get('name', 'Marcus')}, a {self.persona.get('title', 'stra
                 content = payload.get('content') or f"Page {payload.get('page_number', '?')}: [reference]"
                 prompt_parts.append(f"- {content}")
 
-        prompt_parts.append("\n---\n\nBased on the above, provide your strategic evaluation and feedback, structured as requested:")
+        prompt_parts.append("\n---\n\nProvide your authentic, insightful strategic evaluation now. Be specific, candid, and memorable. Synthesize specialist findings with your unique perspective:")
 
         return [
-            {"role": "system", "content": "You are an investor providing authentic strategic feedback. Stay strictly in character and embody the persona's specific perspective."},
+            {"role": "system", "content": "You are a seasoned investor providing authentic strategic feedback. Think like a VC who has seen thousands of pitches. Be candid about what works and what doesn't. Synthesize specialist insights while adding your own expertise. Stay strictly in character with the persona provided."},
             {"role": "user", "content": "\n".join(prompt_parts)}
         ]
 
