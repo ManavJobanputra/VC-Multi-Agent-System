@@ -7,7 +7,7 @@ python-dotenv
 python-pptx
 pdfplumber
 Pillow
-beautifulsoup4
+tavily-python
 
 
 

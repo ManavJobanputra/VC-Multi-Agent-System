@@ -1,14 +1,15 @@
+import json
 import logging
 import re
-from typing import Dict, List, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Dict, List
 
-import requests
-from bs4 import BeautifulSoup
+from tavily import TavilyClient
 
 from agents.base_agent import BaseAgent
-from backend.mistral_client import MistralClient
 from backend.chroma_manager import ChromaManager
+from backend.config import TAVILY_API_KEY
+from backend.mistral_client import MistralClient
 
 logger = logging.getLogger(__name__)
 
@@ -21,16 +22,12 @@ class MarketAnalysisAgent(BaseAgent):
         )
         self.llm = MistralClient()
         self.chroma = ChromaManager(collection_name="vc_pitches_market")
+        # Falls back to Tavily's keyless mode (rate-limited, no signup) if no key is configured.
+        self.tavily = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else TavilyClient()
 
-        # HARD GUARANTEES / LIMITS
-        self.SEARCH_QUERIES_PER_QUESTION = 3
-        self.PAGES_PER_QUERY = 5
-        self.MAX_CHARS_PER_PAGE = 5500      # slightly reduced → faster LLM calls
-
-        # PARALLELISM CONTROLS — tune based on your infra & rate limits
-        self.QUESTION_WORKERS = 6           # ← new: parallel questions
-        self.SEARCH_WORKERS = 10
-        self.FETCH_WORKERS = 30             # increased — network I/O bound
+        self.QUESTION_WORKERS = 4
+        self.MAX_RESULTS_PER_QUESTION = 5
+        self.MAX_CONTENT_CHARS_PER_SOURCE = 1500
 
     # ==============================================================
     # 1. Generate Research Questions
@@ -39,7 +36,7 @@ class MarketAnalysisAgent(BaseAgent):
         prompt = f"""
 You are a VC market research strategist.
 
-From the pitch below, generate 6–8 concrete market research questions
+From the pitch below, generate 6-8 concrete market research questions
 covering market size, competitors, pricing, adoption, growth, and risks.
 
 Pitch:
@@ -61,125 +58,113 @@ Return ONLY bullet-point questions.
         return questions[:8]
 
     # ==============================================================
-    # 2. Rewrite Question → Search Queries
+    # 2. Research a single question via Tavily
     # ==============================================================
-    def _rewrite_search_queries(self, question: str) -> List[str]:
-        prompt = f"""
-Rewrite the question into {self.SEARCH_QUERIES_PER_QUESTION}
-effective Google/Bing-style search queries likely to surface reports,
-pricing pages, statistics, industry blogs or credible sources.
-
-Question:
-{question}
-
-Return one query per line — nothing else.
-"""
-        resp = self.llm.call_openrouter_api(
-            [{"role": "user", "content": prompt}],
-            temperature=0.2,
-            max_tokens=120,
-        )
-
-        queries = [q.strip() for q in resp.splitlines() if len(q.strip()) > 8]
-        return queries[:self.SEARCH_QUERIES_PER_QUESTION]
-
-    # ==============================================================
-    # 3. Web Search (single query)
-    # ==============================================================
-    def _search_links(self, query: str) -> List[str]:
+    def _research_question(self, question: str) -> Dict:
+        """One Tavily call replaces the old search-links + fetch-pages pipeline:
+        Tavily returns an AI-synthesized answer plus the source snippets it
+        was drawn from, in a single round trip, instead of us scraping Bing
+        HTML and crawling pages ourselves (which was silently blocked -
+        every result came back unparseable)."""
         try:
-            url = "https://www.bing.com/search"
-            params = {"q": query}
-            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-
-            html = requests.get(url, params=params, headers=headers, timeout=10).text
-            soup = BeautifulSoup(html, "html.parser")
-            links = []
-
-            for a in soup.select("li.b_algo h2 a"):
-                href = a.get("href")
-                if href and href.startswith(("http://", "https://")):
-                    links.append(href)
-                if len(links) >= self.PAGES_PER_QUERY:
-                    break
-
-            return links
+            response = self.tavily.search(
+                query=question,
+                search_depth="advanced",
+                include_answer="advanced",
+                max_results=self.MAX_RESULTS_PER_QUESTION,
+            )
         except Exception as e:
-            logger.warning(f"Search failed for '{query}': {e}")
-            return []
+            logger.warning(f"Tavily search failed for '{question}': {e}")
+            return {"question": question, "ok": False, "error": str(e), "sources": []}
+
+        results = response.get("results") or []
+        sources = [
+            {
+                "title": r.get("title", ""),
+                "url": r.get("url", ""),
+                "content": (r.get("content") or "")[: self.MAX_CONTENT_CHARS_PER_SOURCE],
+                "score": r.get("score"),
+            }
+            for r in results
+        ]
+
+        return {
+            "question": question,
+            "ok": bool(sources or response.get("answer")),
+            "tavily_answer": response.get("answer") or "",
+            "sources": sources,
+        }
 
     # ==============================================================
-    # 4. Fetch Page (single URL)
+    # 3. Extract Structured Signals from Tavily's research
     # ==============================================================
-    def _fetch_page_text(self, url: str) -> Dict[str, str]:
-        try:
-            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-            r = requests.get(url, headers=headers, timeout=12)
-            r.raise_for_status()
+    def _extract_market_signals(self, research: Dict) -> Dict:
+        if not research["ok"]:
+            return {"insufficient_data": True, "reason": research.get("error", "No search results found")}
 
-            soup = BeautifulSoup(r.text, "html.parser")
-            for tag in soup(["script", "style", "noscript", "iframe", "footer", "header"]):
-                tag.decompose()
-
-            text = " ".join(soup.get_text(separator=" ").split())
-            return {"url": url, "text": text[:self.MAX_CHARS_PER_PAGE]}
-        except Exception as e:
-            logger.debug(f"Fetch failed for {url}: {e}")
-            return {}
-
-    # ==============================================================
-    # 5. Extract Structured Signals
-    # ==============================================================
-    def _extract_market_signals(self, question: str, docs: List[Dict]) -> Dict:
-        if not docs:
-            return {}
-
-        context = "\n\n".join(
-            f"Source: {d['url']}\n{d['text']}" for d in docs
-        )[:8500]  # slightly increased, still safe
+        context_parts = []
+        if research["tavily_answer"]:
+            context_parts.append(f"AI-synthesized answer: {research['tavily_answer']}")
+        for s in research["sources"]:
+            context_parts.append(f"Source: {s['title']} ({s['url']})\n{s['content']}")
+        context = "\n\n".join(context_parts)[:8500]
 
         prompt = f"""
 You are a market intelligence analyst.
 
-Extract structured signals from ALL provided sources.
+Extract structured signals ONLY from the provided context below. Do not
+invent numbers, competitors, or claims that aren't in the context.
 
 Question being answered:
-{question}
+{research['question']}
 
-Context (multiple sources):
+Context:
 {context}
 
-Return **valid JSON only** with these keys (use empty arrays if no data):
+Return **valid JSON only** with these keys. Each list item MUST be a short
+plain string (e.g. "$300M India TAM by 2026 (source X)"), never a nested
+object. Use empty arrays if no data in the context:
 {{
   "market_numbers": list[str],
   "growth_rates": list[str],
   "competitors": list[str],
   "pricing_models": list[str],
   "customer_segments": list[str],
-  "notable_claims": list[str],
-  "sources": list[str]
+  "notable_claims": list[str]
 }}
 """
         resp = self.llm.call_openrouter_api(
             [{"role": "user", "content": prompt}],
             temperature=0.1,
-            max_tokens=700,
+            max_tokens=1500,
         )
 
         try:
             cleaned = resp.strip()
-            if cleaned.startswith("```json"):
-                cleaned = cleaned.split("```json", 1)[1].split("```", 1)[0]
-            import json
-            return json.loads(cleaned)
-        except Exception:
-            logger.warning(f"JSON parse failed for question: {question}")
-            return {"raw_output": resp, "parse_error": True}
+            if cleaned.startswith("```"):
+                cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+                cleaned = re.sub(r"\s*```$", "", cleaned)
+            signals = json.loads(cleaned)
+        except (json.JSONDecodeError, TypeError):
+            logger.warning(f"JSON parse failed for question: {research['question']}")
+            return {"insufficient_data": True, "reason": "Could not parse extracted signals"}
+
+        signals["sources"] = [s["url"] for s in research["sources"]]
+        return signals
 
     # ==============================================================
-    # 6. Market Size Estimation
+    # 4. Market Size Estimation
     # ==============================================================
     def _estimate_market(self, pitch_data: Dict, signals: List[Dict]) -> str:
+        usable_signals = [s for s in signals if not s.get("insufficient_data")]
+
+        if not usable_signals:
+            return (
+                "Market research unavailable: web search returned no usable data for any "
+                "research question. Do not treat the pitch's own market-size claims as "
+                "validated - they are unverified until real research succeeds."
+            )
+
         prompt = f"""
 You are a VC analyst.
 
@@ -189,23 +174,25 @@ estimate the **Total Addressable Market (TAM)** in USD.
 Pitch:
 {pitch_data}
 
-Aggregated signals from multiple questions:
-{signals}
+Aggregated signals from multiple questions (only from real web research - do not
+supplement with outside knowledge beyond what's here):
+{usable_signals}
 
 Rules:
-- Use proxy metrics when direct data missing
+- Use proxy metrics when direct data is missing, but say so explicitly
 - State key assumptions explicitly
-- Prefer a realistic range over single point estimate
-- Be conservative — avoid hype
+- Prefer a realistic range over a single point estimate
+- Be conservative - avoid hype
+- If the signals are too thin to estimate responsibly, say so instead of guessing
 """
         return self.llm.call_openrouter_api(
             [{"role": "user", "content": prompt}],
             temperature=0.25,
-            max_tokens=350,
+            max_tokens=500,
         )
 
     # ==============================================================
-    # 7. Store Findings
+    # 5. Store Findings
     # ==============================================================
     def _store_findings(self, question: str, signals: Dict, pitch_data: Dict):
         text = f"Question: {question}\nSignals: {signals}"
@@ -222,57 +209,22 @@ Rules:
             logger.error(f"Chroma upsert failed: {e}")
 
     # ==============================================================
-    # 8. Process ONE question (runs in parallel)
+    # 6. Process ONE question (runs in parallel)
     # ==============================================================
     def _process_single_question(self, question: str, pitch_data: Dict) -> Dict:
-        search_queries = self._rewrite_search_queries(question)
-
-        # ── PARALLEL SEARCH ───────────────────────────────────────
-        all_urls = []
-        with ThreadPoolExecutor(max_workers=self.SEARCH_WORKERS) as executor:
-            futures = [executor.submit(self._search_links, q) for q in search_queries]
-            for future in as_completed(futures):
-                try:
-                    all_urls.extend(future.result())
-                except Exception:
-                    pass
-
-        # Simple deduplication + cap
-        seen = set()
-        unique_urls = []
-        for url in all_urls:
-            if url not in seen:
-                seen.add(url)
-                unique_urls.append(url)
-        all_urls = unique_urls[:self.PAGES_PER_QUERY * self.SEARCH_QUERIES_PER_QUESTION]
-
-        # ── PARALLEL FETCH ────────────────────────────────────────
-        docs = []
-        with ThreadPoolExecutor(max_workers=self.FETCH_WORKERS) as executor:
-            futures = [executor.submit(self._fetch_page_text, url) for url in all_urls]
-            for future in as_completed(futures):
-                try:
-                    result = future.result()
-                    if result and result.get("text"):
-                        docs.append(result)
-                except Exception:
-                    pass
-
-        signals = self._extract_market_signals(question, docs)
+        research = self._research_question(question)
+        signals = self._extract_market_signals(research)
+        self._store_findings(question, signals, pitch_data)
 
         finding = {
             "question": question,
-            "search_queries": search_queries,
-            "pages_crawled": len(docs),
+            "sources": [s["url"] for s in research["sources"]],
             "signals": signals,
         }
-
-        self._store_findings(question, signals, pitch_data)
-
         return {"finding": finding, "signals": signals}
 
     # ==============================================================
-    # 9. Main Orchestration — PARALLEL across questions
+    # 7. Main Orchestration — PARALLEL across questions
     # ==============================================================
     def analyze_market(self, pitch_data: Dict) -> Dict:
         logger.info("MarketAnalysisAgent: Starting market analysis")
@@ -299,15 +251,19 @@ Rules:
                     logger.info(f"Completed question: {q}")
                 except Exception as exc:
                     logger.error(f"Question '{q}' generated an exception: {exc}")
+                    all_findings.append({"question": q, "sources": [], "signals": {"insufficient_data": True, "reason": str(exc)}})
+                    all_signals.append({"insufficient_data": True, "reason": str(exc)})
 
         market_estimate = self._estimate_market(pitch_data, all_signals)
+        failed_count = sum(1 for s in all_signals if s.get("insufficient_data"))
 
         return {
             "questions": questions,
             "findings": sorted(all_findings, key=lambda x: x["question"]),
             "market_size_estimate": market_estimate,
-            "crawl_policy": f"{self.PAGES_PER_QUERY} pages/query max, {self.SEARCH_QUERIES_PER_QUESTION} queries/question, parallel questions & fetches",
+            "research_provider": "tavily",
             "questions_processed": len(all_findings),
+            "questions_with_usable_data": len(all_findings) - failed_count,
         }
 
     # ==============================================================
