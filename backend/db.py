@@ -57,3 +57,31 @@ def init_db():
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sessions (
+                session_id TEXT PRIMARY KEY,
+                user_email TEXT NOT NULL,
+                company_name TEXT,
+                industry TEXT,
+                stage TEXT,
+                persona_id TEXT,
+                persona_name TEXT,
+                pitch_data TEXT,
+                analysis TEXT,
+                investment_score INTEGER,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS session_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL REFERENCES sessions(session_id),
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user_email ON sessions(user_email)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_session_messages_session_id ON session_messages(session_id)")

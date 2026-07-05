@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import {
   ArrowRight, MessageSquare, FileCheck, TrendingUp, ShieldAlert,
@@ -37,7 +38,7 @@ const AGENTS = [
   { icon: Sparkles, name: 'Marcus', detail: 'Synthesizes every finding into one verdict' },
 ];
 
-function LandingPage({ onStart }) {
+function LandingPage({ onStart, isSignedIn }) {
   return (
     <div className="min-h-screen bg-paper phase-in relative">
       <div className="margin-marks margin-marks-left" data-label="VC Pitch Analyzer" />
@@ -55,9 +56,16 @@ function LandingPage({ onStart }) {
               <p className="text-xs font-mono uppercase tracking-widest text-ink-soft">Diligence Room</p>
             </div>
           </div>
-          <Button onClick={onStart} variant="outline">
-            Begin Session
-          </Button>
+          <div className="flex items-center gap-3">
+            {isSignedIn && (
+              <Link to="/sessions" className="text-sm text-ink-soft hover:text-ink underline underline-offset-4">
+                My Sessions
+              </Link>
+            )}
+            <Button onClick={onStart} variant="outline">
+              Begin Session
+            </Button>
+          </div>
         </div>
       </div>
 
