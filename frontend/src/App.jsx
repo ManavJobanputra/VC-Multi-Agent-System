@@ -9,6 +9,8 @@ import AdminPage from './pages/AdminPage';
 import SignInPage from './pages/SignInPage';
 import AuthCallbackPage from './pages/AuthCallbackPage';
 import PaywallPage from './pages/PaywallPage';
+import SessionsPage from './pages/SessionsPage';
+import SessionDetailPage from './pages/SessionDetailPage';
 import './App.css';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
@@ -168,7 +170,7 @@ function App() {
 
   return (
     <Routes>
-      <Route path="/" element={<LandingPage onStart={handleBeginSession} />} />
+      <Route path="/" element={<LandingPage onStart={handleBeginSession} isSignedIn={!!authToken} />} />
       <Route path="/signin" element={<SignInPage />} />
       <Route path="/auth/callback" element={<AuthCallbackPage onAuthenticated={handleAuthenticated} />} />
       <Route
@@ -181,6 +183,8 @@ function App() {
           />
         }
       />
+      <Route path="/sessions" element={<SessionsPage token={authToken} />} />
+      <Route path="/sessions/:sessionId" element={<SessionDetailPage token={authToken} />} />
       <Route path="/personas" element={<PersonaSelect onPersonaSelect={handlePersonaSelect} />} />
       <Route
         path="/pitch"
@@ -206,6 +210,7 @@ function App() {
             onBack={handleBackToHome}
             evaluation={result}
             sessionId={pitchData?.session_id}
+            authToken={authToken}
           />
         }
       />

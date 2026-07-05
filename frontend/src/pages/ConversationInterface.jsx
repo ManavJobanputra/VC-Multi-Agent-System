@@ -10,7 +10,7 @@ import { generatePDFReport } from '@/utils/reportGenerator';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
-function ConversationInterface({ pitch, persona, onBack, sessionId: initialSessionId }) {
+function ConversationInterface({ pitch, persona, onBack, sessionId: initialSessionId, authToken }) {
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isRecording, setIsRecording] = useState(false);
@@ -59,7 +59,10 @@ function ConversationInterface({ pitch, persona, onBack, sessionId: initialSessi
     try {
       const response = await fetch(`${API_BASE}/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
         body: JSON.stringify({
           message: text,
           history: messages,
@@ -105,7 +108,10 @@ function ConversationInterface({ pitch, persona, onBack, sessionId: initialSessi
     try {
       const response = await fetch(`${API_BASE}/generate_analysis`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
         body: JSON.stringify({
           pitch_context: pitch,
           conversation_history: messages,
@@ -692,4 +698,5 @@ function MemoSection({ number, title, items, tone }) {
   );
 }
 
+export { AnalysisResults };
 export default ConversationInterface;

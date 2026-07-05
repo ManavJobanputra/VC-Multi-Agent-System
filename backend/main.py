@@ -24,6 +24,7 @@ from env_editor import read_env_masked, update_env
 from db import init_db
 import user_auth
 import billing
+import session_store
 from agents.evaluation_orchestrator import EvaluationOrchestrator
 from agents.financial_analysis_agent import FinancialAnalysisAgent
 from agents.market_analysis_agent import MarketAnalysisAgent
@@ -223,6 +224,19 @@ def me(email: str = Depends(require_user)):
     return user_auth.get_user(email)
 
 
+@app.get("/sessions")
+def list_sessions(email: str = Depends(require_user)):
+    return session_store.get_user_sessions(email)
+
+
+@app.get("/sessions/{session_id}")
+def get_session(session_id: str, email: str = Depends(require_user)):
+    detail = session_store.get_session_detail(session_id, email)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return detail
+
+
 @app.post("/billing/create-order")
 def billing_create_order(req: CreateOrderRequest, email: str = Depends(require_user)):
     if req.pack not in billing.CREDIT_PACKS:
@@ -262,12 +276,21 @@ def health():
 
 
 @app.post("/chat")
-def chat(req: ChatRequest):
+def chat(req: ChatRequest, email: str = Depends(require_user)):
     if not req.message:
         raise HTTPException(status_code=400, detail="No message provided")
-    
+
     # Get or create session ID
     session_id = req.session_id or str(uuid4())
+
+    if req.session_id:
+        if not session_store.owns_session(session_id, email):
+            raise HTTPException(status_code=403, detail="This session does not belong to you")
+    else:
+        # Defensive fallback - the real flow always creates the session
+        # via /evaluate_pitch first, but avoid silently orphaning a chat
+        # that somehow arrives without one.
+        session_store.create_session(session_id, email, req.pitch_context or {}, None)
     
     # Build context from pitch and history
     context_prompt = ""
@@ -493,7 +516,13 @@ def chat(req: ChatRequest):
         )
     except Exception as e:
         logger.warning(f"Could not store conversation to Chroma: {e}")
-    
+
+    try:
+        session_store.add_message(session_id, "user", req.message)
+        session_store.add_message(session_id, "assistant", response_text)
+    except Exception as e:
+        logger.warning(f"Could not persist messages for session history: {e}")
+
     return {
         "response": response_text,
         "conversation_ended": conversation_ended,
@@ -692,6 +721,8 @@ def evaluate_pitch(req: EvaluatePitchRequest, email: str = Depends(require_user)
     if not pitch_data.get("content"):
         raise HTTPException(status_code=400, detail="No pitch content provided. Please include a 'content' field in your pitch_data.")
 
+    session_store.create_session(session_id, email, pitch_data, req.persona)
+
     pitch_file_name = pitch_data.get("pitch_file_name")
     pitch_file_base64 = pitch_data.get("pitch_file_base64")
     pages = process_pitch_file(pitch_file_name, pitch_file_base64, mistral_client.call_vision_api)
@@ -743,7 +774,7 @@ def get_progress():
 
 
 @app.post("/generate_analysis")
-def generate_analysis(req: AnalysisRequest):
+def generate_analysis(req: AnalysisRequest, email: str = Depends(require_user)):
     """Generate comprehensive investment analysis using Analysis Agent."""
     try:
         if not req.pitch_context or not req.conversation_history:
@@ -757,6 +788,9 @@ def generate_analysis(req: AnalysisRequest):
         if not req.session_id:
             raise HTTPException(status_code=400, detail="session_id is required to scope the analysis to this session")
 
+        if not session_store.owns_session(req.session_id, email):
+            raise HTTPException(status_code=403, detail="This session does not belong to you")
+
         # Use Analysis Agent to generate comprehensive report
         analysis_agent = agents["analysis_agent"]
         analysis_result = analysis_agent.generate_investment_analysis(
@@ -764,15 +798,19 @@ def generate_analysis(req: AnalysisRequest):
             pitch_context=req.pitch_context,
             conversation_history=req.conversation_history
         )
-        
+
         logger.info(f"Analysis generated successfully with score: {analysis_result.get('investment_score')}")
-        
+
+        session_store.save_analysis(req.session_id, analysis_result, analysis_result.get('investment_score'))
+
         return {
             "analysis": analysis_result,
             "pitch_summary": req.pitch_context,
             "conversation_length": len(req.conversation_history)
         }
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Analysis generation failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
