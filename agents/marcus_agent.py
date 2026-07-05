@@ -1,7 +1,7 @@
 from agents.base_agent import BaseAgent
 from typing import Dict, List, Optional
 from backend.mistral_client import MistralClient
-from backend.chroma_manager import ChromaManager
+from backend.pinecone_manager import PineconeManager
 import logging
 import json
 
@@ -11,7 +11,7 @@ class MarcusAgent(BaseAgent):
     def __init__(self):
         super().__init__("Marcus Agent", "Senior strategic advisor and mentor")
         self.mistral_client = MistralClient()
-        self.chroma_manager = ChromaManager()
+        self.pinecone_manager = PineconeManager()
         self.persona = None
 
     def set_persona(self, persona: Optional[Dict]):
@@ -89,7 +89,7 @@ You are {self.persona.get('name', 'Marcus')}, a {self.persona.get('title', 'stra
                 query_text = " ".join([json.dumps(res) for res in evaluation_results.values()])
 
             if query_text:
-                context_docs = self.chroma_manager.search(query_text, limit=3)
+                context_docs = self.pinecone_manager.search(query_text, limit=3)
                 logger.info(f"Marcus Agent: Retrieved {len(context_docs)} context documents from Chroma.")
         except Exception as e:
             logger.warning(f"Marcus Agent: Could not retrieve context from Chroma: {e}")

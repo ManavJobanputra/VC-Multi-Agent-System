@@ -1,6 +1,6 @@
 fastapi
 uvicorn[standard]
-chromadb
+pinecone
 sentence-transformers
 requests
 python-dotenv

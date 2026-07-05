@@ -113,10 +113,13 @@ Desktop.ini
 *password*
 config.local.py
 
-# Qdrant local storage
+# Qdrant/Chroma local storage (legacy - vector store is now hosted on Pinecone)
 qdrant_storage/
 chroma_storage/
 data/chroma_storage/
+
+# Claude Code local settings
+.claude/
 
 # Yarn
 .yarn/cache
