@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { Routes, Route, useNavigate } from 'react-router-dom';
+import LandingPage from './pages/LandingPage';
 import HomePage from './pages/HomePage';
 import PersonaSelect from './pages/PersonaSelect';
 import LoadingScreen from './components/LoadingScreen';
@@ -19,7 +21,7 @@ const readFileAsBase64 = (file) => new Promise((resolve, reject) => {
 });
 
 function App() {
-  const [currentPage, setCurrentPage] = useState('persona'); // 'persona', 'home', 'loading', 'results', 'conversation'
+  const navigate = useNavigate();
   const [selectedPersona, setSelectedPersona] = useState(null);
   const [pitchData, setPitchData] = useState(null);
   const [result, setResult] = useState(null);
@@ -28,20 +30,20 @@ function App() {
 
   const handlePersonaSelect = (persona) => {
     setSelectedPersona(persona);
-    setCurrentPage('home');
+    navigate('/pitch');
   };
 
   const handleBackToHome = () => {
-    setCurrentPage('home');
     setPitchData(null);
     setResult(null);
+    navigate('/pitch');
   };
 
   const handlePitchSubmit = async ({ formData, file }) => {
     setPitchData({ formData, fileName: file?.name });
     setError(null);
-    setCurrentPage('loading');
     setAgentProgress({});
+    navigate('/evaluating');
 
     try {
       let pitchFileBase64 = '';
@@ -91,32 +93,43 @@ function App() {
 
       const data = await response.json();
       setResult(data);
-      
+
       // Pass pitch data with session_id to conversation interface
-      setPitchData({ 
-        formData, 
+      setPitchData({
+        formData,
         fileName: file?.name,
-        session_id: data.session_id 
+        session_id: data.session_id
       });
-      
-      setCurrentPage('conversation');
+
+      navigate('/session');
     } catch (e) {
       console.error(e);
       setError(e.message || 'Submission failed');
-      setCurrentPage('home');
+      navigate('/pitch');
     }
   };
 
-  const renderPage = () => {
-    switch (currentPage) {
-      case 'persona':
-        return <PersonaSelect onPersonaSelect={handlePersonaSelect} />;
-      case 'home':
-        return <HomePage onSubmit={handlePitchSubmit} />;
-      case 'loading':
-        return <LoadingScreen agentProgress={agentProgress} />;
-      case 'conversation':
-        return (
+  return (
+    <Routes>
+      <Route path="/" element={<LandingPage onStart={() => navigate('/personas')} />} />
+      <Route path="/personas" element={<PersonaSelect onPersonaSelect={handlePersonaSelect} />} />
+      <Route
+        path="/pitch"
+        element={
+          <>
+            {error && (
+              <div className="bg-destructive/10 text-destructive text-sm px-6 py-3 text-center font-medium">
+                {error}
+              </div>
+            )}
+            <HomePage onSubmit={handlePitchSubmit} />
+          </>
+        }
+      />
+      <Route path="/evaluating" element={<LoadingScreen agentProgress={agentProgress} />} />
+      <Route
+        path="/session"
+        element={
           <ConversationInterface
             pitch={pitchData?.formData}
             persona={selectedPersona}
@@ -124,18 +137,10 @@ function App() {
             evaluation={result}
             sessionId={pitchData?.session_id}
           />
-        );
-      default:
-        return <PersonaSelect onPersonaSelect={handlePersonaSelect} />;
-    }
-  };
-
-  return <>
-    {error && currentPage === 'home' && (
-      <div style={{ color: 'red', padding: '1rem' }}>Error: {error}</div>
-    )}
-    {renderPage()}
-  </>;
+        }
+      />
+    </Routes>
+  );
 }
 
 export default App;

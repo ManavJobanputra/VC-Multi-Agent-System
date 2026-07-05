@@ -1,25 +1,19 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Upload, Sparkles, FileText, Building2, DollarSign, Target } from 'lucide-react';
+import { Upload } from 'lucide-react';
 
-const TEST_DATA = {
-  companyName: "TechVenture AI",
-  industry: "Artificial Intelligence / SaaS",
-  foundedYear: "2023",
-  teamSize: "8",
-  currentStage: "Seed",
-  fundingAmount: "500000",
-  revenueModel: "Subscription-based SaaS with tiered pricing. We charge $99/month for startups, $499/month for SMBs, and custom enterprise pricing starting at $2000/month.",
-  problemStatement: "Businesses spend 40% of their time on repetitive data entry and analysis tasks. Current solutions are either too expensive, too complex, or lack AI capabilities.",
-  solution: "Our AI-powered automation platform reduces manual work by 80% through intelligent document processing, automated data extraction, and predictive analytics.",
-  targetMarket: "B2B SaaS targeting SMBs and enterprises in finance, healthcare, and legal sectors. Total addressable market of $15B.",
-  traction: "250 beta users, $15K MRR, 25% month-over-month growth. Partnerships with 3 Fortune 500 companies in pilot phase.",
-  competitiveAdvantage: "Proprietary AI models with 95% accuracy, 10x faster than competitors, and seamless integration with existing workflows."
-};
+function SectionEyebrow({ index, children }) {
+  return (
+    <div className="flex items-center gap-3 pb-2 border-b border-ink/10">
+      <span className="font-mono text-xs text-coral tracking-widest">{index}</span>
+      <span className="text-sm font-semibold uppercase tracking-wide text-ink/70">{children}</span>
+    </div>
+  );
+}
 
 function HomePage({ onSubmit }) {
   const [uploadedFile, setUploadedFile] = useState(null);
@@ -55,66 +49,59 @@ function HomePage({ onSubmit }) {
     }
   };
 
-  const fillTestData = () => {
-    setFormData(TEST_DATA);
-  };
-
   const handleSubmit = () => {
     const requiredFields = ['companyName', 'industry', 'foundedYear', 'teamSize', 'currentStage', 'fundingAmount', 'revenueModel', 'problemStatement', 'solution', 'targetMarket', 'traction', 'competitiveAdvantage'];
     const missingFields = requiredFields.filter(field => !formData[field].trim());
-    
+
     if (missingFields.length > 0) {
       alert('Please fill all required fields');
       return;
     }
-    
+
     onSubmit({ formData, file: uploadedFile });
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
+    <div className="min-h-screen bg-paper phase-in relative">
+      <div className="margin-marks margin-marks-left" data-label="VC Pitch Analyzer" />
+      <div className="margin-marks margin-marks-right" data-label="Step 02 of 03" />
+
       {/* Header */}
-      <div className="bg-white border-b shadow-sm">
-        <div className="max-w-5xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-lg flex items-center justify-center">
-                <Sparkles className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">VC Pitch Analyzer</h1>
-                <p className="text-sm text-gray-500">AI-Powered Startup Evaluation</p>
-              </div>
+      <div className="border-b border-border sticky top-0 z-10 bg-paper/95 backdrop-blur">
+        <div className="max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-coral flex items-center justify-center font-display text-xs text-white">
+              VM
             </div>
-            <Button variant="outline" onClick={fillTestData}>
-              <FileText className="w-4 h-4 mr-2" />
-              Fill Test Data
-            </Button>
+            <div>
+              <h1 className="font-display text-xl text-ink tracking-tight">VC Pitch Analyzer</h1>
+              <p className="text-xs font-mono uppercase tracking-widest text-ink-soft">Diligence Room</p>
+            </div>
           </div>
+          <p className="hidden sm:block text-xs font-mono uppercase tracking-widest text-ink-soft">
+            Step 02 · Pitch Intake
+          </p>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="max-w-5xl mx-auto px-6 py-8">
-        <Card className="shadow-lg">
+      <div className="max-w-5xl mx-auto px-6 py-12">
+        <Card>
           <CardHeader>
-            <CardTitle className="text-2xl">Submit Your Startup Pitch</CardTitle>
+            <CardTitle className="font-display text-2xl font-normal">Submit for Diligence</CardTitle>
             <CardDescription>
-              Provide details about your startup and optionally upload your pitch deck for comprehensive AI analysis
+              Give your partner the details of the business. Optionally attach your deck for deeper context.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-6">
+            <div className="space-y-8">
               {/* Basic Information */}
               <div className="space-y-4">
-                <div className="flex items-center gap-2 text-lg font-semibold text-gray-800 border-b pb-2">
-                  <Building2 className="w-5 h-5 text-indigo-600" />
-                  Basic Information
-                </div>
-                
+                <SectionEyebrow index="01">Basic Information</SectionEyebrow>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="companyName">Company Name *</Label>
+                    <Label htmlFor="companyName">Company name *</Label>
                     <Input
                       id="companyName"
                       name="companyName"
@@ -123,7 +110,7 @@ function HomePage({ onSubmit }) {
                       placeholder="e.g., TechVenture AI"
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="industry">Industry *</Label>
                     <Input
@@ -131,12 +118,12 @@ function HomePage({ onSubmit }) {
                       name="industry"
                       value={formData.industry}
                       onChange={handleInputChange}
-                      placeholder="e.g., AI/SaaS, FinTech"
+                      placeholder="e.g., AI/SaaS, Fintech"
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
-                    <Label htmlFor="foundedYear">Founded Year *</Label>
+                    <Label htmlFor="foundedYear">Founded year *</Label>
                     <Input
                       id="foundedYear"
                       name="foundedYear"
@@ -146,9 +133,9 @@ function HomePage({ onSubmit }) {
                       placeholder="e.g., 2023"
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
-                    <Label htmlFor="teamSize">Team Size *</Label>
+                    <Label htmlFor="teamSize">Team size *</Label>
                     <Input
                       id="teamSize"
                       name="teamSize"
@@ -158,9 +145,9 @@ function HomePage({ onSubmit }) {
                       placeholder="e.g., 8"
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
-                    <Label htmlFor="currentStage">Current Stage *</Label>
+                    <Label htmlFor="currentStage">Current stage *</Label>
                     <Input
                       id="currentStage"
                       name="currentStage"
@@ -169,9 +156,9 @@ function HomePage({ onSubmit }) {
                       placeholder="e.g., Seed, Series A"
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
-                    <Label htmlFor="fundingAmount">Funding Sought ($) *</Label>
+                    <Label htmlFor="fundingAmount">Funding sought ($) *</Label>
                     <Input
                       id="fundingAmount"
                       name="fundingAmount"
@@ -186,13 +173,10 @@ function HomePage({ onSubmit }) {
 
               {/* Business Model & Strategy */}
               <div className="space-y-4">
-                <div className="flex items-center gap-2 text-lg font-semibold text-gray-800 border-b pb-2">
-                  <DollarSign className="w-5 h-5 text-green-600" />
-                  Business Model & Strategy
-                </div>
-                
+                <SectionEyebrow index="02">Business Model & Strategy</SectionEyebrow>
+
                 <div className="space-y-2">
-                  <Label htmlFor="revenueModel">Revenue Model *</Label>
+                  <Label htmlFor="revenueModel">Revenue model *</Label>
                   <Textarea
                     id="revenueModel"
                     name="revenueModel"
@@ -202,9 +186,9 @@ function HomePage({ onSubmit }) {
                     rows={3}
                   />
                 </div>
-                
+
                 <div className="space-y-2">
-                  <Label htmlFor="problemStatement">Problem Statement *</Label>
+                  <Label htmlFor="problemStatement">Problem statement *</Label>
                   <Textarea
                     id="problemStatement"
                     name="problemStatement"
@@ -214,15 +198,15 @@ function HomePage({ onSubmit }) {
                     rows={3}
                   />
                 </div>
-                
+
                 <div className="space-y-2">
-                  <Label htmlFor="solution">Your Solution *</Label>
+                  <Label htmlFor="solution">Your solution *</Label>
                   <Textarea
                     id="solution"
                     name="solution"
                     value={formData.solution}
                     onChange={handleInputChange}
-                    placeholder="How does your product/service solve this problem?"
+                    placeholder="How does your product or service solve this problem?"
                     rows={3}
                   />
                 </div>
@@ -230,25 +214,22 @@ function HomePage({ onSubmit }) {
 
               {/* Market & Traction */}
               <div className="space-y-4">
-                <div className="flex items-center gap-2 text-lg font-semibold text-gray-800 border-b pb-2">
-                  <Target className="w-5 h-5 text-blue-600" />
-                  Market & Traction
-                </div>
-                
+                <SectionEyebrow index="03">Market & Traction</SectionEyebrow>
+
                 <div className="space-y-2">
-                  <Label htmlFor="targetMarket">Target Market *</Label>
+                  <Label htmlFor="targetMarket">Target market *</Label>
                   <Textarea
                     id="targetMarket"
                     name="targetMarket"
                     value={formData.targetMarket}
                     onChange={handleInputChange}
-                    placeholder="Describe your target market and size..."
+                    placeholder="Describe your target market and its size..."
                     rows={3}
                   />
                 </div>
-                
+
                 <div className="space-y-2">
-                  <Label htmlFor="traction">Current Traction *</Label>
+                  <Label htmlFor="traction">Current traction *</Label>
                   <Textarea
                     id="traction"
                     name="traction"
@@ -258,9 +239,9 @@ function HomePage({ onSubmit }) {
                     rows={3}
                   />
                 </div>
-                
+
                 <div className="space-y-2">
-                  <Label htmlFor="competitiveAdvantage">Competitive Advantage *</Label>
+                  <Label htmlFor="competitiveAdvantage">Competitive advantage *</Label>
                   <Textarea
                     id="competitiveAdvantage"
                     name="competitiveAdvantage"
@@ -274,12 +255,9 @@ function HomePage({ onSubmit }) {
 
               {/* File Upload */}
               <div className="space-y-4">
-                <div className="flex items-center gap-2 text-lg font-semibold text-gray-800 border-b pb-2">
-                  <Upload className="w-5 h-5 text-purple-600" />
-                  Pitch Deck (Optional)
-                </div>
-                
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-indigo-400 transition-colors">
+                <SectionEyebrow index="04">Pitch Deck (Optional)</SectionEyebrow>
+
+                <div className="border-2 border-dashed border-ink/15 rounded-lg p-6 text-center hover:border-coral/50 transition-colors">
                   <input
                     type="file"
                     id="pitchDeck"
@@ -288,25 +266,23 @@ function HomePage({ onSubmit }) {
                     className="hidden"
                   />
                   <label htmlFor="pitchDeck" className="cursor-pointer">
-                    <Upload className="w-12 h-12 mx-auto text-gray-400 mb-3" />
-                    <p className="text-sm font-medium text-gray-700 mb-1">
-                      {uploadedFile ? uploadedFile.name : 'Click to upload pitch deck'}
+                    <Upload className="w-8 h-8 mx-auto text-coral mb-3" />
+                    <p className="text-sm font-medium text-ink/80 mb-1">
+                      {uploadedFile ? uploadedFile.name : 'Click to upload your deck'}
                     </p>
-                    <p className="text-xs text-gray-500">
-                      PDF or PPT format (Optional)
-                    </p>
+                    <p className="text-xs text-ink/50">PDF or PPT format · optional</p>
                   </label>
                 </div>
               </div>
 
               {/* Submit Button */}
-              <div className="pt-4">
-                <Button 
+              <div className="pt-2">
+                <Button
                   onClick={handleSubmit}
-                  className="w-full h-12 text-lg bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+                  size="lg"
+                  className="w-full h-13 text-base font-medium"
                 >
-                  <Sparkles className="w-5 h-5 mr-2" />
-                  Analyze My Pitch
+                  Submit for Diligence
                 </Button>
               </div>
             </div>
