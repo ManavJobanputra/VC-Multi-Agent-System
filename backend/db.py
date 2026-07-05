@@ -30,11 +30,17 @@ def init_db():
         conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 email TEXT PRIMARY KEY,
+                password_hash TEXT,
                 free_session_used INTEGER NOT NULL DEFAULT 0,
                 credits INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             )
         """)
+        # Migration for DBs created before password_hash existed (this app
+        # predates password auth - it launched with email magic links).
+        existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+        if "password_hash" not in existing_columns:
+            conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS magic_link_tokens (
                 token TEXT PRIMARY KEY,

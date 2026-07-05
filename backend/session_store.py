@@ -75,6 +75,30 @@ def get_user_sessions(user_email: str) -> List[Dict[str, Any]]:
         return [dict(row) for row in rows]
 
 
+def get_completed_sessions_for_progress(user_email: str) -> List[Dict[str, Any]]:
+    """All completed (memo-generated) sessions for a user, oldest first, so
+    a cross-session report can reason about improvement over time."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT session_id, company_name, industry, stage, persona_name,
+                   pitch_data, analysis, investment_score, created_at
+            FROM sessions
+            WHERE user_email = ? AND status = 'completed' AND analysis IS NOT NULL
+            ORDER BY created_at ASC
+            """,
+            (user_email,),
+        ).fetchall()
+
+        sessions = []
+        for row in rows:
+            session = dict(row)
+            session["pitch_data"] = json.loads(session["pitch_data"]) if session["pitch_data"] else {}
+            session["analysis"] = json.loads(session["analysis"]) if session["analysis"] else {}
+            sessions.append(session)
+        return sessions
+
+
 def get_session_detail(session_id: str, user_email: str) -> Optional[Dict[str, Any]]:
     with get_conn() as conn:
         session_row = conn.execute(
