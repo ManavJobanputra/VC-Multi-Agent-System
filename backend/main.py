@@ -86,7 +86,12 @@ app.add_middleware(
 
 # Initialize components
 mistral_client = MistralClient()
+# Shared singletons - each PineconeManager() call loads its own copy of the
+# embedding model and describes/connects to the Pinecone index, so every
+# agent that needs one gets the same shared instance rather than
+# constructing its own (was 5 separate embedding-model loads on every boot).
 pinecone_manager = PineconeManager()
+pinecone_manager_market = PineconeManager(collection_name="vc_pitches_market")
 rag_system = RAGSystem(pinecone_manager, mistral_client)
 voice_processor = VoiceProcessor()
 
@@ -94,13 +99,13 @@ voice_processor = VoiceProcessor()
 agents = {
     "evaluation_orchestrator": EvaluationOrchestrator(),
     "financial_analysis_agent": FinancialAnalysisAgent(),
-    "market_analysis_agent": MarketAnalysisAgent(),
+    "market_analysis_agent": MarketAnalysisAgent(pinecone_manager=pinecone_manager_market),
     "risk_assessment_agent": RiskAssessmentAgent(),
     "team_assessment_agent": TeamAssessmentAgent(),
-    "marcus_agent": MarcusAgent(),
+    "marcus_agent": MarcusAgent(pinecone_manager=pinecone_manager),
     "execution_agent": ExecutionAgent(),
-    "answer_validation_agent": AnswerValidationAgent(),
-    "analysis_agent": AnalysisAgent()
+    "answer_validation_agent": AnswerValidationAgent(pinecone_manager=pinecone_manager),
+    "analysis_agent": AnalysisAgent(pinecone_manager=pinecone_manager)
 }
 
 # Global state for progress tracking
@@ -780,4 +785,13 @@ if __name__ == "__main__":
     import uvicorn
 
     logger.info(f"Starting server on {HOST}:{PORT}")
-    uvicorn.run("main:app", host=HOST, port=PORT, reload=DEBUG)
+    if DEBUG:
+        # reload=True needs an import string so uvicorn can re-import
+        # fresh code on file changes.
+        uvicorn.run("main:app", host=HOST, port=PORT, reload=True)
+    else:
+        # Passing the app object directly (rather than the "main:app"
+        # string) avoids uvicorn re-importing this module a second time,
+        # which was doubling every agent's startup work (embedding model
+        # loads, Pinecone index connections, etc.) on every boot.
+        uvicorn.run(app, host=HOST, port=PORT)

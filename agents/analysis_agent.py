@@ -8,10 +8,10 @@ import json
 logger = logging.getLogger(__name__)
 
 class AnalysisAgent(BaseAgent):
-    def __init__(self):
+    def __init__(self, pinecone_manager: Optional[PineconeManager] = None):
         super().__init__("Analysis Agent", "Generates comprehensive investment analysis from conversation and agent findings")
         self.mistral_client = MistralClient()
-        self.pinecone_manager = PineconeManager()
+        self.pinecone_manager = pinecone_manager or PineconeManager()
 
     def generate_investment_analysis(
         self, 
