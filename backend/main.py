@@ -6,7 +6,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import logging
@@ -21,6 +21,9 @@ from deck_processor import process_pitch_file, build_page_documents
 from scheduler import SelfPingScheduler
 from admin_auth import verify_password, create_session, verify_session
 from env_editor import read_env_masked, update_env
+from db import init_db
+import user_auth
+import billing
 from agents.evaluation_orchestrator import EvaluationOrchestrator
 from agents.financial_analysis_agent import FinancialAnalysisAgent
 from agents.market_analysis_agent import MarketAnalysisAgent
@@ -113,6 +116,10 @@ self_ping_scheduler = SelfPingScheduler(
 )
 self_ping_scheduler.start()
 
+# Users/credits/payments DB (SQLite for now - see db.py for the caveat
+# about moving to hosted Postgres before real deployment)
+init_db()
+
 
 def require_admin(authorization: Optional[str] = Header(None)):
     token = None
@@ -120,6 +127,16 @@ def require_admin(authorization: Optional[str] = Header(None)):
         token = authorization[len("Bearer "):]
     if not verify_session(token):
         raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+def require_user(authorization: Optional[str] = Header(None)) -> str:
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[len("Bearer "):]
+    email = user_auth.get_session_email(token)
+    if not email:
+        raise HTTPException(status_code=401, detail="Sign in required")
+    return email
 
 
 class AdminLoginRequest(BaseModel):
@@ -163,6 +180,74 @@ def admin_update_config(req: ConfigUpdateRequest, _: None = Depends(require_admi
         "note": "Saved to .env. Restart the server for these changes to take effect.",
         "config": read_env_masked(),
     }
+
+
+class RequestLinkRequest(BaseModel):
+    email: str
+
+
+class VerifyLinkRequest(BaseModel):
+    token: str
+
+
+class CreateOrderRequest(BaseModel):
+    pack: str
+
+
+@app.post("/auth/request-link")
+def auth_request_link(req: RequestLinkRequest):
+    if not user_auth.is_valid_email(req.email):
+        raise HTTPException(status_code=400, detail="Enter a valid email address")
+    user_auth.request_magic_link(req.email)
+    return {"status": "sent"}
+
+
+@app.post("/auth/verify")
+def auth_verify(req: VerifyLinkRequest):
+    email = user_auth.verify_magic_link(req.token)
+    if not email:
+        raise HTTPException(status_code=400, detail="This link is invalid or has expired")
+    session_token = user_auth.create_session(email)
+    user = user_auth.get_user(email)
+    return {"token": session_token, "user": user}
+
+
+@app.get("/me")
+def me(email: str = Depends(require_user)):
+    return user_auth.get_user(email)
+
+
+@app.post("/billing/create-order")
+def billing_create_order(req: CreateOrderRequest, email: str = Depends(require_user)):
+    if req.pack not in billing.CREDIT_PACKS:
+        raise HTTPException(status_code=400, detail="Unknown credit pack")
+    try:
+        return billing.create_order(email, req.pack)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+
+@app.get("/billing/packs")
+def billing_packs():
+    return billing.CREDIT_PACKS
+
+
+@app.post("/billing/webhook")
+async def billing_webhook(request: Request):
+    payload = await request.body()
+    signature = request.headers.get("X-Razorpay-Signature", "")
+
+    if not billing.verify_webhook_signature(payload, signature):
+        raise HTTPException(status_code=400, detail="Invalid webhook signature")
+
+    event = await request.json()
+    if event.get("event") == "payment.captured":
+        payment_entity = event["payload"]["payment"]["entity"]
+        billing.handle_payment_captured(
+            order_id=payment_entity["order_id"],
+            payment_id=payment_entity["id"],
+        )
+    return {"status": "ok"}
 
 
 @app.get("/health")
@@ -575,14 +660,28 @@ def _store_agent_results_to_chroma(session_id: str, pitch_data: Dict, evaluation
 
 
 @app.post("/evaluate_pitch")
-def evaluate_pitch(req: EvaluatePitchRequest):
+def evaluate_pitch(req: EvaluatePitchRequest, email: str = Depends(require_user)):
+    if not user_auth.can_start_session(email):
+        raise HTTPException(
+            status_code=402,
+            detail="No sessions remaining. Purchase a credit pack to start another evaluation.",
+        )
+    user_auth.consume_session_entitlement(email)
+
     global _evaluation_progress
     _evaluation_progress = {}
-    
+
     # Generate unique session ID for this pitch
     session_id = str(uuid4())
     
     pitch_data = req.pitch_data.dict()
+    # Optional string fields are explicitly None (not just absent) when the
+    # frontend omits them, since PitchData declares them as Optional[str] =
+    # None - several agents call .lower()/.strip() on these without a None
+    # guard, so normalize to "" here once rather than in every agent.
+    for field in ("company_name", "founder_name", "email", "industry", "stage"):
+        if pitch_data.get(field) is None:
+            pitch_data[field] = ""
 
     if not pitch_data.get("content"):
         raise HTTPException(status_code=400, detail="No pitch content provided. Please include a 'content' field in your pitch_data.")

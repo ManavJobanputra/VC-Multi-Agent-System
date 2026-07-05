@@ -106,6 +106,7 @@ Desktop.ini
 *.db
 *.sqlite
 *.sqlite3
+data/app.db
 
 # API Keys and Secrets (extra safety)
 *secret*

@@ -190,7 +190,7 @@ instead of praising the team anyway.
 
         pitch_text = pitch_data.get("content", "")
         founder_name = pitch_data.get("founder_name", "")
-        industry = pitch_data.get("industry", "")
+        industry = pitch_data.get("industry") or ""
 
         if not pitch_text:
             return {"status": "error", "message": "No pitch content provided."}

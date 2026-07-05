@@ -9,10 +9,10 @@ class RiskAssessmentAgent(BaseAgent):
         )
 
     def assess_risks(self, pitch_data: Dict[str, Any]) -> Dict[str, Any]:
-        stage = pitch_data.get("currentStage", "").lower()
-        team_size = int(pitch_data.get("teamSize", 0))
-        industry = pitch_data.get("industry", "").lower()
-        revenue_model = pitch_data.get("revenueModel", "").lower()
+        stage = (pitch_data.get("currentStage") or "").lower()
+        team_size = int(pitch_data.get("teamSize") or 0)
+        industry = (pitch_data.get("industry") or "").lower()
+        revenue_model = (pitch_data.get("revenueModel") or "").lower()
 
         risks = {}
 

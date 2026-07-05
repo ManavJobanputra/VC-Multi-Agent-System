@@ -48,6 +48,23 @@ SELF_PING_URL = os.getenv('SELF_PING_URL', f'http://localhost:{PORT}/health')
 SELF_PING_INTERVAL_MINUTES = int(os.getenv('SELF_PING_INTERVAL_MINUTES', '13'))
 SELF_PING_ENABLED = os.getenv('SELF_PING_ENABLED', 'True').lower() == 'true'
 
+# Frontend base URL - used to build the magic-link login URL that gets
+# emailed to users (points at /auth/callback on the deployed frontend).
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
+
+# Email (magic-link login) Configuration
+# Optional: without a RESEND_API_KEY, magic links are logged to the
+# console instead of emailed - fine for local dev/testing, not for real
+# users. Get a free key at https://resend.com.
+RESEND_API_KEY = os.getenv('RESEND_API_KEY', '')
+RESEND_FROM_EMAIL = os.getenv('RESEND_FROM_EMAIL', 'onboarding@resend.dev')
+
+# Razorpay (credit pack payments) Configuration
+# Get test-mode keys from https://dashboard.razorpay.com (Settings > API Keys).
+RAZORPAY_KEY_ID = os.getenv('RAZORPAY_KEY_ID', '')
+RAZORPAY_KEY_SECRET = os.getenv('RAZORPAY_KEY_SECRET', '')
+RAZORPAY_WEBHOOK_SECRET = os.getenv('RAZORPAY_WEBHOOK_SECRET', '')
+
 # Validate critical configuration
 if not GEMINI_API_KEY:
     raise ValueError("GEMINI_API_KEY environment variable is not set. Please add it to your .env file.")
