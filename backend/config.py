@@ -16,6 +16,11 @@ MISTRAL_MODEL = os.getenv('MISTRAL_MODEL', 'mistralai/mistral-7b-instruct-v0.1')
 CHROMA_PERSIST_DIR = os.getenv('CHROMA_PERSIST_DIR', os.path.join(os.path.dirname(__file__), '..', 'data', 'chroma_storage'))
 CHROMA_COLLECTION = os.getenv('CHROMA_COLLECTION', 'vc_pitches')
 
+# Tavily Configuration (market research web search)
+# Free tier: 1,000 credits/month, no credit card - https://tavily.com
+# Falls back to Tavily's rate-limited keyless mode if unset.
+TAVILY_API_KEY = os.getenv('TAVILY_API_KEY', '')
+
 # Voice Processing Configuration
 SPEECH_RECOGNITION_LANGUAGE = os.getenv('SPEECH_RECOGNITION_LANGUAGE', 'en-US')
 
