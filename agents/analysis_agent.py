@@ -55,7 +55,13 @@ class AnalysisAgent(BaseAgent):
             for doc in results:
                 payload = doc.get('payload', {})
                 if payload.get('type') == 'qa_pair' and payload.get('qa_data'):
-                    qa_pairs.append(payload['qa_data'])
+                    qa_data = payload['qa_data']
+                    if isinstance(qa_data, str):
+                        try:
+                            qa_data = json.loads(qa_data)
+                        except (json.JSONDecodeError, TypeError):
+                            continue
+                    qa_pairs.append(qa_data)
             
             logger.info(f"Retrieved {len(qa_pairs)} Q&A pairs")
             return qa_pairs
@@ -213,7 +219,7 @@ CRITICAL RULES:
                 {"role": "user", "content": prompt}
             ]
             
-            response = self.mistral_client.call_openrouter_api(messages, temperature=0.2)
+            response = self.mistral_client.call_openrouter_api(messages, temperature=0.2, max_tokens=2000)
             logger.info(f"Analysis response length: {len(response)}")
             
             # Parse JSON
