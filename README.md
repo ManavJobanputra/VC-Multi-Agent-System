@@ -9,7 +9,7 @@ The VC Multi-Agent System is an AI-powered venture capital pitch evaluation plat
 ### Technology Stack
 - **Backend**: FastAPI (Python)
 - **Frontend**: React with Tailwind CSS
-- **Database**: Chroma (embedded, disk-persisted vector database)
+- **Database**: Pinecone (hosted, serverless vector database)
 - **AI Model**: Gemini API (Gemma models)
 - **Embeddings**: Sentence Transformers
 - **Voice Processing**: SpeechRecognition + gTTS
@@ -63,7 +63,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-The backend will be available at `http://localhost:8000` (Chroma persists to local disk automatically - no separate database service to start).
+The backend will be available at `http://localhost:8000` (Pinecone is hosted - no local database service to start, but it does need `PINECONE_API_KEY` set).
 
 ### Frontend Setup
 
@@ -240,7 +240,7 @@ The system implements a complete voice processing pipeline:
 
 The Retrieval-Augmented Generation (RAG) system enhances responses by:
 
-1. **Document Ingestion**: Startup pitch data stored in Chroma
+1. **Document Ingestion**: Startup pitch data stored in Pinecone
 2. **Vector Embeddings**: Sentence transformers create embeddings
 3. **Similarity Search**: Relevant context retrieved based on queries
 4. **Context Enhancement**: Retrieved information augments AI responses
@@ -264,9 +264,9 @@ The Retrieval-Augmented Generation (RAG) system enhances responses by:
 - Check CORS settings in the FastAPI application
 - Ensure no firewall blocking connections
 
-**Chroma data not persisting across restarts:**
-- Confirm `CHROMA_PERSIST_DIR` points to a writable, stable path (defaults to `./data/chroma_storage`)
-- Delete that directory to reset stored embeddings if data looks stale/corrupted
+**Vector search returning nothing / RAG context missing:**
+- Confirm `PINECONE_API_KEY` is set and valid
+- The index (`PINECONE_INDEX_NAME`) is created automatically on first run if missing - check backend logs for index-creation errors
 
 ### Performance Optimization
 

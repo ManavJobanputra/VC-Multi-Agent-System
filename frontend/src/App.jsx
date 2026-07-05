@@ -5,6 +5,7 @@ import HomePage from './pages/HomePage';
 import PersonaSelect from './pages/PersonaSelect';
 import LoadingScreen from './components/LoadingScreen';
 import ConversationInterface from './pages/ConversationInterface';
+import AdminPage from './pages/AdminPage';
 import './App.css';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
@@ -127,6 +128,7 @@ function App() {
         }
       />
       <Route path="/evaluating" element={<LoadingScreen agentProgress={agentProgress} />} />
+      <Route path="/admin" element={<AdminPage />} />
       <Route
         path="/session"
         element={

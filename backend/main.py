@@ -6,18 +6,21 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import logging
 
 # Load configuration from .env
-from config import HOST, PORT, DEBUG
+from config import HOST, PORT, DEBUG, SELF_PING_URL, SELF_PING_INTERVAL_MINUTES, SELF_PING_ENABLED
 
 from mistral_client import MistralClient
-from chroma_manager import ChromaManager
+from pinecone_manager import PineconeManager
 from rag_system import RAGSystem
 from deck_processor import process_pitch_file, build_page_documents
+from scheduler import SelfPingScheduler
+from admin_auth import verify_password, create_session, verify_session
+from env_editor import read_env_masked, update_env
 from agents.evaluation_orchestrator import EvaluationOrchestrator
 from agents.financial_analysis_agent import FinancialAnalysisAgent
 from agents.market_analysis_agent import MarketAnalysisAgent
@@ -80,8 +83,8 @@ app.add_middleware(
 
 # Initialize components
 mistral_client = MistralClient()
-chroma_manager = ChromaManager()
-rag_system = RAGSystem(chroma_manager, mistral_client)
+pinecone_manager = PineconeManager()
+rag_system = RAGSystem(pinecone_manager, mistral_client)
 voice_processor = VoiceProcessor()
 
 # Initialize agents
@@ -101,6 +104,65 @@ agents = {
 _evaluation_progress = {}
 _conversation_history = {}  # Store conversation per session
 _evaluation_results = {}  # Store evaluation results for analysis
+
+# Self-ping keep-alive scheduler
+self_ping_scheduler = SelfPingScheduler(
+    url=SELF_PING_URL,
+    interval_minutes=SELF_PING_INTERVAL_MINUTES,
+    enabled=SELF_PING_ENABLED,
+)
+self_ping_scheduler.start()
+
+
+def require_admin(authorization: Optional[str] = Header(None)):
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[len("Bearer "):]
+    if not verify_session(token):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+class AdminLoginRequest(BaseModel):
+    password: str
+
+
+class CronToggleRequest(BaseModel):
+    enabled: bool
+
+
+class ConfigUpdateRequest(BaseModel):
+    updates: Dict[str, str]
+
+
+@app.post("/admin/login")
+def admin_login(req: AdminLoginRequest):
+    if not verify_password(req.password):
+        raise HTTPException(status_code=401, detail="Incorrect password")
+    return {"token": create_session()}
+
+
+@app.get("/admin/status")
+def admin_status(_: None = Depends(require_admin)):
+    return {
+        "cron": self_ping_scheduler.status(),
+        "config": read_env_masked(),
+    }
+
+
+@app.post("/admin/cron/toggle")
+def admin_cron_toggle(req: CronToggleRequest, _: None = Depends(require_admin)):
+    self_ping_scheduler.set_enabled(req.enabled)
+    return self_ping_scheduler.status()
+
+
+@app.post("/admin/config")
+def admin_update_config(req: ConfigUpdateRequest, _: None = Depends(require_admin)):
+    update_env(req.updates)
+    return {
+        "status": "saved",
+        "note": "Saved to .env. Restart the server for these changes to take effect.",
+        "config": read_env_masked(),
+    }
 
 
 @app.get("/health")
@@ -130,7 +192,7 @@ def chat(req: ChatRequest):
     
     # Prepare RAG context from conversation history and agent analyses - FILTER BY SESSION
     rag_query = req.message
-    rag_results = chroma_manager.search(rag_query, limit=5, session_filter=session_id)
+    rag_results = pinecone_manager.search(rag_query, limit=5, session_filter=session_id)
     
     # Organize RAG results by type for better context
     agent_analyses = []
@@ -295,7 +357,7 @@ def chat(req: ChatRequest):
                 "content": f"Validation for '{last_question}': {validation_result.get('validation', '')}"
             })
         
-        chroma_manager.upsert_data(
+        pinecone_manager.upsert_data(
             [req.message, response_text, qa_text] + ([validation_result.get('validation', '')] if validation_result else []),
             metadata_list
         )
@@ -331,7 +393,7 @@ def chat(req: ChatRequest):
     
     # Store in Chroma for RAG retrieval with SESSION ID
     try:
-        chroma_manager.upsert_data(
+        pinecone_manager.upsert_data(
             [req.message, response_text],
             [
                 {"type": "user_message", "conversation": True, "session_id": session_id, "content": req.message},
@@ -371,7 +433,7 @@ def voice_chat(req: VoiceChatRequest):
         context_prompt = f"Context: Company {req.pitch_context.get('company_name')}, {req.pitch_context.get('industry')}, Stage: {req.pitch_context.get('stage')}\n"
     
     # Prepare RAG context - FILTER BY SESSION (enhanced with agent analyses)
-    rag_results = chroma_manager.search(transcribed_text, limit=5, session_filter=session_id)
+    rag_results = pinecone_manager.search(transcribed_text, limit=5, session_filter=session_id)
     
     # Organize RAG results by type for better context
     agent_analyses = []
@@ -451,7 +513,7 @@ def voice_chat(req: VoiceChatRequest):
     
     # Store in Chroma for RAG retrieval with SESSION ID
     try:
-        chroma_manager.upsert_data(
+        pinecone_manager.upsert_data(
             [transcribed_text, response_text],
             [
                 {"type": "user_voice_message", "conversation": True, "session_id": session_id, "content": transcribed_text},
@@ -506,7 +568,7 @@ def _store_agent_results_to_chroma(session_id: str, pitch_data: Dict, evaluation
         
         # Upsert to Chroma
         if texts_to_store:
-            chroma_manager.upsert_data(texts_to_store, metadatas_to_store)
+            pinecone_manager.upsert_data(texts_to_store, metadatas_to_store)
             logger.info(f"Stored {len(texts_to_store)} agent result documents to Chroma for session {session_id}")
     except Exception as e:
         logger.warning(f"Could not store agent results to Chroma: {e}")
@@ -543,7 +605,7 @@ def evaluate_pitch(req: EvaluatePitchRequest):
             # Add session_id to each doc's metadata
             for doc in docs:
                 doc["metadata"]["session_id"] = session_id
-            chroma_manager.upsert_data(
+            pinecone_manager.upsert_data(
                 [d["text"] for d in docs],
                 [d["metadata"] for d in docs]
             )

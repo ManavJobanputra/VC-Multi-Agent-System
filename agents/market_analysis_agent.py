@@ -7,7 +7,7 @@ from typing import Dict, List
 from tavily import TavilyClient
 
 from agents.base_agent import BaseAgent
-from backend.chroma_manager import ChromaManager
+from backend.pinecone_manager import PineconeManager
 from backend.config import TAVILY_API_KEY
 from backend.mistral_client import MistralClient
 
@@ -21,7 +21,7 @@ class MarketAnalysisAgent(BaseAgent):
             "Market opportunity, competitors, pricing, and TAM analysis"
         )
         self.llm = MistralClient()
-        self.chroma = ChromaManager(collection_name="vc_pitches_market")
+        self.pinecone = PineconeManager(collection_name="vc_pitches_market")
         # Falls back to Tavily's keyless mode (rate-limited, no signup) if no key is configured.
         self.tavily = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else TavilyClient()
 
@@ -204,7 +204,7 @@ Rules:
             "stage": pitch_data.get("stage", ""),
         }
         try:
-            self.chroma.upsert_data([text], [metadata])
+            self.pinecone.upsert_data([text], [metadata])
         except Exception as e:
             logger.error(f"Chroma upsert failed: {e}")
 

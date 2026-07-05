@@ -12,7 +12,7 @@ vc_multi_agent_system/
 │   ├── config.py                     # Loads and validates env vars
 │   ├── main.py                       # Main FastAPI application
 │   ├── mistral_client.py             # Gemini (Gemma) API client
-│   ├── chroma_manager.py             # Chroma vector database client
+│   ├── pinecone_manager.py           # Pinecone vector database client
 │   ├── rag_system.py                 # RAG implementation
 │   ├── deck_processor.py             # Pitch deck (PDF/PPTX) ingestion
 │   └── voice_processing.py           # Voice input/output processing
@@ -41,7 +41,7 @@ vc_multi_agent_system/
 │   │   └── components/              # UI components (shadcn/ui)
 │   └── public/                      # Static assets
 │
-└── data/                            # Local Chroma storage (embeddings/cache)
+└── data/                            # Local scratch data (deck uploads, etc.)
 ```
 
 ## Key Files Description
@@ -50,7 +50,7 @@ vc_multi_agent_system/
 - **main.py**: FastAPI application with API endpoints for chat, voice, and pitch evaluation
 - **config.py**: Loads and validates environment variables from the root `.env`
 - **mistral_client.py**: Handles communication with the Gemini API (Gemma models)
-- **chroma_manager.py**: Manages the embedded Chroma vector database and embeddings
+- **pinecone_manager.py**: Manages the hosted Pinecone vector database and embeddings
 - **rag_system.py**: Implements Retrieval-Augmented Generation for contextual responses
 - **deck_processor.py**: Extracts text/images from uploaded pitch decks (PDF/PPTX)
 - **voice_processing.py**: Handles speech-to-text and text-to-speech conversion

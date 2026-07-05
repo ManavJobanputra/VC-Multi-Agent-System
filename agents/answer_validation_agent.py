@@ -1,7 +1,7 @@
 from agents.base_agent import BaseAgent
 from typing import Dict, List, Optional
 from backend.mistral_client import MistralClient
-from backend.chroma_manager import ChromaManager
+from backend.pinecone_manager import PineconeManager
 import logging
 import json
 
@@ -11,7 +11,7 @@ class AnswerValidationAgent(BaseAgent):
     def __init__(self):
         super().__init__("Answer Validation Agent", "Validates founder answers against market data and agent analysis")
         self.mistral_client = MistralClient()
-        self.chroma_manager = ChromaManager()
+        self.pinecone_manager = PineconeManager()
 
     def validate_answer(self, question: str, answer: str, session_id: str, pitch_context: Dict) -> Dict:
         """
@@ -27,7 +27,7 @@ class AnswerValidationAgent(BaseAgent):
         
         # Step 1: Retrieve relevant market data and agent analyses from Chroma
         query = f"{question} {answer} {pitch_context.get('industry', '')} {pitch_context.get('company_name', '')}"
-        rag_results = self.chroma_manager.search(query, limit=10, session_filter=session_id)
+        rag_results = self.pinecone_manager.search(query, limit=10, session_filter=session_id)
         
         # Organize retrieved context
         agent_findings = []
