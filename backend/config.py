@@ -53,9 +53,20 @@ SELF_PING_ENABLED = os.getenv('SELF_PING_ENABLED', 'True').lower() == 'true'
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
 
 # Email (magic-link login) Configuration
-# Optional: without a RESEND_API_KEY, magic links are logged to the
-# console instead of emailed - fine for local dev/testing, not for real
-# users. Get a free key at https://resend.com.
+# Tries SMTP first if SMTP_HOST is set, then Resend if RESEND_API_KEY is
+# set, then falls back to logging the link to the console - fine for
+# local dev/testing, not for real users.
+#
+# SMTP works with Gmail (smtp.gmail.com, port 587, an App Password - not
+# your regular password - from https://myaccount.google.com/apppasswords),
+# Outlook (smtp.office365.com, port 587), or any other provider's SMTP.
+SMTP_HOST = os.getenv('SMTP_HOST', '')
+SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
+SMTP_USERNAME = os.getenv('SMTP_USERNAME', '')
+SMTP_PASSWORD = os.getenv('SMTP_PASSWORD', '')
+SMTP_FROM_EMAIL = os.getenv('SMTP_FROM_EMAIL', SMTP_USERNAME)
+SMTP_USE_TLS = os.getenv('SMTP_USE_TLS', 'True').lower() == 'true'
+
 RESEND_API_KEY = os.getenv('RESEND_API_KEY', '')
 RESEND_FROM_EMAIL = os.getenv('RESEND_FROM_EMAIL', 'onboarding@resend.dev')
 
