@@ -8,10 +8,10 @@ import json
 logger = logging.getLogger(__name__)
 
 class MarcusAgent(BaseAgent):
-    def __init__(self):
+    def __init__(self, pinecone_manager: Optional[PineconeManager] = None):
         super().__init__("Marcus Agent", "Senior strategic advisor and mentor")
         self.mistral_client = MistralClient()
-        self.pinecone_manager = PineconeManager()
+        self.pinecone_manager = pinecone_manager or PineconeManager()
         self.persona = None
 
     def set_persona(self, persona: Optional[Dict]):

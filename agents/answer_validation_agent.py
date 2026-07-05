@@ -8,10 +8,10 @@ import json
 logger = logging.getLogger(__name__)
 
 class AnswerValidationAgent(BaseAgent):
-    def __init__(self):
+    def __init__(self, pinecone_manager: Optional[PineconeManager] = None):
         super().__init__("Answer Validation Agent", "Validates founder answers against market data and agent analysis")
         self.mistral_client = MistralClient()
-        self.pinecone_manager = PineconeManager()
+        self.pinecone_manager = pinecone_manager or PineconeManager()
 
     def validate_answer(self, question: str, answer: str, session_id: str, pitch_context: Dict) -> Dict:
         """

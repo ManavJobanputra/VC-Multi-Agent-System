@@ -2,7 +2,7 @@ import json
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from tavily import TavilyClient
 
@@ -15,13 +15,13 @@ logger = logging.getLogger(__name__)
 
 
 class MarketAnalysisAgent(BaseAgent):
-    def __init__(self):
+    def __init__(self, pinecone_manager: Optional[PineconeManager] = None):
         super().__init__(
             "Market Analysis Agent",
             "Market opportunity, competitors, pricing, and TAM analysis"
         )
         self.llm = MistralClient()
-        self.pinecone = PineconeManager(collection_name="vc_pitches_market")
+        self.pinecone = pinecone_manager or PineconeManager(collection_name="vc_pitches_market")
         # Falls back to Tavily's keyless mode (rate-limited, no signup) if no key is configured.
         self.tavily = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else TavilyClient()
 
