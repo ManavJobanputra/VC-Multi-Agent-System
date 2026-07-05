@@ -56,6 +56,7 @@ class VoiceChatRequest(BaseModel):
 class AnalysisRequest(BaseModel):
     pitch_context: Optional[Dict[str, Any]] = None
     conversation_history: List[Dict[str, Any]] = []
+    session_id: Optional[str] = None
 
 
 class PitchData(BaseModel):
@@ -747,17 +748,19 @@ def generate_analysis(req: AnalysisRequest):
     try:
         if not req.pitch_context or not req.conversation_history:
             raise HTTPException(status_code=400, detail="Pitch context and conversation history required")
-        
-        # Extract session_id
-        session_id = req.pitch_context.get('session_id') or req.pitch_context.get('sessionId')
-        
-        if not session_id:
-            logger.warning("No session_id provided, using conversation history only")
-        
+
+        # session_id MUST be a real, non-empty value here: pinecone_manager.search
+        # treats a falsy session_filter (None or "") as "no filter", meaning an
+        # empty/missing session_id would search across every session ever
+        # stored in this namespace - pulling other users' Q&A into this memo -
+        # rather than just this one. Reject rather than silently doing that.
+        if not req.session_id:
+            raise HTTPException(status_code=400, detail="session_id is required to scope the analysis to this session")
+
         # Use Analysis Agent to generate comprehensive report
         analysis_agent = agents["analysis_agent"]
         analysis_result = analysis_agent.generate_investment_analysis(
-            session_id=session_id or "",
+            session_id=req.session_id,
             pitch_context=req.pitch_context,
             conversation_history=req.conversation_history
         )
