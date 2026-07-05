@@ -38,7 +38,7 @@ const AGENTS = [
   { icon: Sparkles, name: 'Marcus', detail: 'Synthesizes every finding into one verdict' },
 ];
 
-function LandingPage({ onStart, isSignedIn }) {
+function LandingPage({ onStart, isSignedIn, onLogout }) {
   return (
     <div className="min-h-screen bg-paper phase-in relative">
       <div className="margin-marks margin-marks-left" data-label="VC Pitch Analyzer" />
@@ -58,9 +58,18 @@ function LandingPage({ onStart, isSignedIn }) {
           </div>
           <div className="flex items-center gap-3">
             {isSignedIn && (
-              <Link to="/sessions" className="text-sm text-ink-soft hover:text-ink underline underline-offset-4">
-                My Sessions
-              </Link>
+              <>
+                <Link to="/sessions" className="text-sm text-ink-soft hover:text-ink underline underline-offset-4">
+                  My Sessions
+                </Link>
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  className="text-sm text-ink-soft hover:text-ink underline underline-offset-4"
+                >
+                  Log Out
+                </button>
+              </>
             )}
             <Button onClick={onStart} variant="outline">
               Begin Session

@@ -7,10 +7,10 @@ import LoadingScreen from './components/LoadingScreen';
 import ConversationInterface from './pages/ConversationInterface';
 import AdminPage from './pages/AdminPage';
 import SignInPage from './pages/SignInPage';
-import AuthCallbackPage from './pages/AuthCallbackPage';
 import PaywallPage from './pages/PaywallPage';
 import SessionsPage from './pages/SessionsPage';
 import SessionDetailPage from './pages/SessionDetailPage';
+import ProgressPage from './pages/ProgressPage';
 import './App.css';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
@@ -62,6 +62,21 @@ function App() {
     localStorage.setItem(AUTH_TOKEN_KEY, token);
     setAuthToken(token);
     setUser(userInfo);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch(`${API_BASE}/auth/logout`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+    } catch (e) {
+      console.error('Logout request failed:', e);
+    }
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    setAuthToken(null);
+    setUser(null);
+    navigate('/');
   };
 
   const handleBeginSession = () => {
@@ -170,9 +185,8 @@ function App() {
 
   return (
     <Routes>
-      <Route path="/" element={<LandingPage onStart={handleBeginSession} isSignedIn={!!authToken} />} />
-      <Route path="/signin" element={<SignInPage />} />
-      <Route path="/auth/callback" element={<AuthCallbackPage onAuthenticated={handleAuthenticated} />} />
+      <Route path="/" element={<LandingPage onStart={handleBeginSession} isSignedIn={!!authToken} onLogout={handleLogout} />} />
+      <Route path="/signin" element={<SignInPage onAuthenticated={handleAuthenticated} />} />
       <Route
         path="/paywall"
         element={
@@ -183,8 +197,9 @@ function App() {
           />
         }
       />
-      <Route path="/sessions" element={<SessionsPage token={authToken} />} />
+      <Route path="/sessions" element={<SessionsPage token={authToken} onLogout={handleLogout} />} />
       <Route path="/sessions/:sessionId" element={<SessionDetailPage token={authToken} />} />
+      <Route path="/progress" element={<ProgressPage token={authToken} />} />
       <Route path="/personas" element={<PersonaSelect onPersonaSelect={handlePersonaSelect} />} />
       <Route
         path="/pitch"

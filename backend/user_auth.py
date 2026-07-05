@@ -1,20 +1,21 @@
+import hashlib
+import hmac
 import re
 import secrets
 import time
-from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
 
 from db import get_conn
-from email_sender import send_magic_link
-from config import FRONTEND_URL
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-MAGIC_LINK_TTL_MINUTES = 15
 SESSION_TTL_SECONDS = 30 * 24 * 60 * 60  # 30 days
+MIN_PASSWORD_LENGTH = 8
+PBKDF2_ITERATIONS = 260_000
 
 # In-memory session tokens, same lightweight pattern as admin_auth.py.
-# Lost on restart (users just sign in again) - the durable state that
-# actually matters (email, free_session_used, credits) lives in the DB.
+# Lost on restart (users just log in again) - the durable state that
+# actually matters (email, password hash, free_session_used, credits)
+# lives in the DB.
 _sessions: Dict[str, dict] = {}  # token -> {"email": ..., "expires_at": ...}
 
 
@@ -22,48 +23,66 @@ def is_valid_email(email: str) -> bool:
     return bool(email and EMAIL_RE.match(email.strip()))
 
 
-def request_magic_link(email: str) -> None:
+def _hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), PBKDF2_ITERATIONS)
+    return f"{salt}${digest.hex()}"
+
+
+def _verify_password(password: str, stored_hash: str) -> bool:
+    try:
+        salt, hex_digest = stored_hash.split("$", 1)
+    except (ValueError, AttributeError):
+        return False
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), PBKDF2_ITERATIONS)
+    return hmac.compare_digest(digest.hex(), hex_digest)
+
+
+def sign_up(email: str, password: str) -> str:
+    """Creates a new account and returns a session token. Raises ValueError
+    on bad input or an already-registered email."""
     email = email.strip().lower()
-    token = secrets.token_urlsafe(32)
-    expires_at = (datetime.now(timezone.utc) + timedelta(minutes=MAGIC_LINK_TTL_MINUTES)).isoformat()
+    if not is_valid_email(email):
+        raise ValueError("Enter a valid email address")
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise ValueError(f"Password must be at least {MIN_PASSWORD_LENGTH} characters")
 
     with get_conn() as conn:
+        existing = conn.execute("SELECT email FROM users WHERE email = ?", (email,)).fetchone()
+        if existing is not None:
+            raise ValueError("An account with this email already exists. Log in instead.")
         conn.execute(
-            "INSERT INTO magic_link_tokens (token, email, expires_at) VALUES (?, ?, ?)",
-            (token, email, expires_at),
-        )
-        conn.execute(
-            "INSERT INTO users (email) VALUES (?) ON CONFLICT(email) DO NOTHING",
-            (email,),
+            "INSERT INTO users (email, password_hash) VALUES (?, ?)",
+            (email, _hash_password(password)),
         )
 
-    link = f"{FRONTEND_URL}/auth/callback?token={token}"
-    send_magic_link(email, link)
+    return create_session(email)
 
 
-def verify_magic_link(token: str) -> Optional[str]:
-    """Consumes the token if valid, returns the associated email or None."""
+def log_in(email: str, password: str) -> str:
+    """Verifies credentials and returns a session token. Raises ValueError
+    on missing account or wrong password."""
+    email = email.strip().lower()
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT email, expires_at, used FROM magic_link_tokens WHERE token = ?",
-            (token,),
+            "SELECT password_hash FROM users WHERE email = ?", (email,)
         ).fetchone()
 
-        if row is None or row["used"]:
-            return None
+    if row is None or not row["password_hash"] or not _verify_password(password, row["password_hash"]):
+        raise ValueError("Incorrect email or password")
 
-        expires_at = datetime.fromisoformat(row["expires_at"])
-        if datetime.now(timezone.utc) > expires_at:
-            return None
-
-        conn.execute("UPDATE magic_link_tokens SET used = 1 WHERE token = ?", (token,))
-        return row["email"]
+    return create_session(email)
 
 
 def create_session(email: str) -> str:
     token = secrets.token_urlsafe(32)
     _sessions[token] = {"email": email, "expires_at": time.time() + SESSION_TTL_SECONDS}
     return token
+
+
+def revoke_session(token: Optional[str]) -> None:
+    if token:
+        _sessions.pop(token, None)
 
 
 def get_session_email(token: Optional[str]) -> Optional[str]:

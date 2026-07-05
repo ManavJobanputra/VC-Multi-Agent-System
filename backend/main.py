@@ -34,6 +34,7 @@ from agents.marcus_agent import MarcusAgent
 from agents.execution_agent import ExecutionAgent
 from agents.answer_validation_agent import AnswerValidationAgent
 from agents.analysis_agent import AnalysisAgent
+from agents.progress_agent import ProgressAgent
 from voice_processing import VoiceProcessor
 
 logging.basicConfig(level=logging.INFO)
@@ -109,6 +110,7 @@ agents = {
     "answer_validation_agent": AnswerValidationAgent(pinecone_manager=pinecone_manager),
     "analysis_agent": AnalysisAgent(pinecone_manager=pinecone_manager)
 }
+progress_agent = ProgressAgent()
 
 # Global state for progress tracking
 _evaluation_progress = {}
@@ -189,34 +191,45 @@ def admin_update_config(req: ConfigUpdateRequest, _: None = Depends(require_admi
     }
 
 
-class RequestLinkRequest(BaseModel):
+class SignupRequest(BaseModel):
     email: str
+    password: str
 
 
-class VerifyLinkRequest(BaseModel):
-    token: str
+class LoginRequest(BaseModel):
+    email: str
+    password: str
 
 
 class CreateOrderRequest(BaseModel):
     pack: str
 
 
-@app.post("/auth/request-link")
-def auth_request_link(req: RequestLinkRequest):
-    if not user_auth.is_valid_email(req.email):
-        raise HTTPException(status_code=400, detail="Enter a valid email address")
-    user_auth.request_magic_link(req.email)
-    return {"status": "sent"}
+@app.post("/auth/signup")
+def auth_signup(req: SignupRequest):
+    try:
+        token = user_auth.sign_up(req.email, req.password)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"token": token, "user": user_auth.get_user(req.email.strip().lower())}
 
 
-@app.post("/auth/verify")
-def auth_verify(req: VerifyLinkRequest):
-    email = user_auth.verify_magic_link(req.token)
-    if not email:
-        raise HTTPException(status_code=400, detail="This link is invalid or has expired")
-    session_token = user_auth.create_session(email)
-    user = user_auth.get_user(email)
-    return {"token": session_token, "user": user}
+@app.post("/auth/login")
+def auth_login(req: LoginRequest):
+    try:
+        token = user_auth.log_in(req.email, req.password)
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    return {"token": token, "user": user_auth.get_user(req.email.strip().lower())}
+
+
+@app.post("/auth/logout")
+def auth_logout(authorization: Optional[str] = Header(None)):
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[len("Bearer "):]
+    user_auth.revoke_session(token)
+    return {"status": "logged_out"}
 
 
 @app.get("/me")
@@ -235,6 +248,16 @@ def get_session(session_id: str, email: str = Depends(require_user)):
     if detail is None:
         raise HTTPException(status_code=404, detail="Session not found")
     return detail
+
+
+@app.get("/progress-report")
+def get_progress_report(email: str = Depends(require_user)):
+    """Cross-session founder progress report - not to be confused with
+    the unauthenticated /progress endpoint below, which polls live
+    per-agent evaluation status during a single /evaluate_pitch call.
+    Same-looking name, unrelated purpose - kept distinct on purpose."""
+    sessions = session_store.get_completed_sessions_for_progress(email)
+    return progress_agent.generate_progress_report(sessions)
 
 
 @app.post("/billing/create-order")

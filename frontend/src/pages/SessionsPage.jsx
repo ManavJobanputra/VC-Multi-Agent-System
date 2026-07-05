@@ -12,7 +12,7 @@ const SCORE_TONE = (score) => {
   return 'text-maroon';
 };
 
-function SessionsPage({ token }) {
+function SessionsPage({ token, onLogout }) {
   const navigate = useNavigate();
   const [sessions, setSessions] = useState(null);
   const [error, setError] = useState(null);
@@ -46,7 +46,11 @@ function SessionsPage({ token }) {
               <p className="text-xs font-mono uppercase tracking-widest text-ink-soft">Past Diligence Rounds</p>
             </div>
           </div>
-          <Button onClick={() => navigate('/personas')}>New Session</Button>
+          <div className="flex items-center gap-3">
+            <Button variant="outline" onClick={() => navigate('/progress')}>Your Progress</Button>
+            <Button onClick={() => navigate('/personas')}>New Session</Button>
+            <Button variant="ghost" onClick={onLogout}>Log Out</Button>
+          </div>
         </div>
       </div>
 
