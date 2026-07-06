@@ -59,8 +59,8 @@ function LandingPage({ onStart, isSignedIn, onLogout }) {
           <div className="flex items-center gap-3">
             {isSignedIn && (
               <>
-                <Link to="/sessions" className="text-sm text-ink-soft hover:text-ink underline underline-offset-4">
-                  My Sessions
+                <Link to="/dashboard" className="text-sm text-ink-soft hover:text-ink underline underline-offset-4">
+                  Dashboard
                 </Link>
                 <button
                   type="button"

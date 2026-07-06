@@ -65,7 +65,7 @@ function SessionDetailPage({ token }) {
       <div className="min-h-screen bg-paper flex items-center justify-center p-4">
         <div className="text-center">
           <p className="text-ink mb-4">{error}</p>
-          <Button variant="outline" onClick={() => navigate('/sessions')}>Back to Sessions</Button>
+          <Button variant="outline" onClick={() => navigate('/dashboard')}>Back to Sessions</Button>
         </div>
       </div>
     );
@@ -84,7 +84,7 @@ function SessionDetailPage({ token }) {
       <div className="min-h-screen bg-paper phase-in flex flex-col">
         <div className="border-b border-border">
           <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-            <Button variant="ghost" size="sm" onClick={() => navigate('/sessions')} className="gap-1.5">
+            <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard')} className="gap-1.5">
               <ChevronLeft className="h-4 w-4" /> All Sessions
             </Button>
             <Button variant="outline" size="sm" onClick={() => setView('transcript')}>
@@ -105,7 +105,7 @@ function SessionDetailPage({ token }) {
     <div className="min-h-screen bg-paper phase-in">
       <div className="border-b border-border">
         <div className="max-w-3xl mx-auto px-6 py-5 flex items-center justify-between">
-          <Button variant="ghost" size="sm" onClick={() => navigate('/sessions')} className="gap-1.5">
+          <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard')} className="gap-1.5">
             <ChevronLeft className="h-4 w-4" /> All Sessions
           </Button>
           {session.analysis && (

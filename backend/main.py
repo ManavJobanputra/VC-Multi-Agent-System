@@ -255,9 +255,20 @@ def get_progress_report(email: str = Depends(require_user)):
     """Cross-session founder progress report - not to be confused with
     the unauthenticated /progress endpoint below, which polls live
     per-agent evaluation status during a single /evaluate_pitch call.
-    Same-looking name, unrelated purpose - kept distinct on purpose."""
+    Same-looking name, unrelated purpose - kept distinct on purpose.
+
+    Cached: this is an LLM call over the user's whole session history, so
+    it's only regenerated when a new completed session exists since the
+    last time it ran - not on every dashboard visit."""
+    cached = session_store.get_cached_progress_report(email)
+    if cached is not None:
+        return cached
+
     sessions = session_store.get_completed_sessions_for_progress(email)
-    return progress_agent.generate_progress_report(sessions)
+    report = progress_agent.generate_progress_report(sessions)
+    if report.get("status") == "ok":
+        session_store.save_progress_report(email, report, len(sessions))
+    return report
 
 
 @app.post("/billing/create-order")

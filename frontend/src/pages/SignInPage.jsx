@@ -31,7 +31,7 @@ function SignInPage({ onAuthenticated }) {
         throw new Error(data.detail || 'Something went wrong.');
       }
       onAuthenticated(data.token, data.user);
-      navigate('/personas');
+      navigate('/dashboard');
     } catch (err) {
       setError(err.message);
     } finally {
