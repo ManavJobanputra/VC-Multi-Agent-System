@@ -91,3 +91,11 @@ def init_db():
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user_email ON sessions(user_email)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_session_messages_session_id ON session_messages(session_id)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS progress_reports (
+                user_email TEXT PRIMARY KEY,
+                report_json TEXT NOT NULL,
+                session_count INTEGER NOT NULL,
+                generated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)

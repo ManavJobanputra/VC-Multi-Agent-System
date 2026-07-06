@@ -118,3 +118,43 @@ def get_session_detail(session_id: str, user_email: str) -> Optional[Dict[str, A
         session["analysis"] = json.loads(session["analysis"]) if session["analysis"] else None
         session["messages"] = [dict(row) for row in message_rows]
         return session
+
+
+def get_completed_session_count(user_email: str) -> int:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS n FROM sessions WHERE user_email = ? AND status = 'completed' AND analysis IS NOT NULL",
+            (user_email,),
+        ).fetchone()
+        return row["n"]
+
+
+def get_cached_progress_report(user_email: str) -> Optional[Dict[str, Any]]:
+    """Returns the cached report only if it's still fresh - i.e. no
+    completed session has been added since it was generated. Regenerating
+    on every dashboard visit would mean an LLM call for a report that
+    hasn't changed, which is wasted latency and cost."""
+    current_count = get_completed_session_count(user_email)
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT report_json, session_count FROM progress_reports WHERE user_email = ?",
+            (user_email,),
+        ).fetchone()
+        if row is None or row["session_count"] != current_count:
+            return None
+        return json.loads(row["report_json"])
+
+
+def save_progress_report(user_email: str, report: Dict[str, Any], session_count: int) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO progress_reports (user_email, report_json, session_count)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_email) DO UPDATE SET
+                report_json = excluded.report_json,
+                session_count = excluded.session_count,
+                generated_at = datetime('now')
+            """,
+            (user_email, json.dumps(report), session_count),
+        )

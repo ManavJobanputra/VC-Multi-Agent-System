@@ -8,9 +8,8 @@ import ConversationInterface from './pages/ConversationInterface';
 import AdminPage from './pages/AdminPage';
 import SignInPage from './pages/SignInPage';
 import PaywallPage from './pages/PaywallPage';
-import SessionsPage from './pages/SessionsPage';
 import SessionDetailPage from './pages/SessionDetailPage';
-import ProgressPage from './pages/ProgressPage';
+import DashboardPage from './pages/DashboardPage';
 import './App.css';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
@@ -197,9 +196,18 @@ function App() {
           />
         }
       />
-      <Route path="/sessions" element={<SessionsPage token={authToken} onLogout={handleLogout} />} />
+      <Route
+        path="/dashboard"
+        element={
+          <DashboardPage
+            token={authToken}
+            user={user}
+            onLogout={handleLogout}
+            onCreditsUpdated={setUser}
+          />
+        }
+      />
       <Route path="/sessions/:sessionId" element={<SessionDetailPage token={authToken} />} />
-      <Route path="/progress" element={<ProgressPage token={authToken} />} />
       <Route path="/personas" element={<PersonaSelect onPersonaSelect={handlePersonaSelect} />} />
       <Route
         path="/pitch"

@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import { autoTable } from 'jspdf-autotable';
 
 export const generatePDFReport = (analysisData, pitchData) => {
   try {
@@ -230,7 +230,7 @@ export const generatePDFReport = (analysisData, pitchData) => {
     doc.setTextColor(0, 0, 0);
     doc.setFont(undefined, 'normal');
 
-    doc.autoTable({
+    autoTable(doc, {
       startY: yPos,
       head: [['Company Information', 'Details']],
       body: [
