@@ -141,6 +141,6 @@ def grant_credits(email: str, amount: int) -> None:
     with get_conn() as conn:
         conn.execute(
             "INSERT INTO users (email, credits) VALUES (?, ?) "
-            "ON CONFLICT(email) DO UPDATE SET credits = credits + excluded.credits",
+            "ON CONFLICT(email) DO UPDATE SET credits = users.credits + excluded.credits",
             (email, amount),
         )
