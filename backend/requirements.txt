@@ -2,6 +2,13 @@ fastapi
 uvicorn[standard]
 psycopg2-binary
 pinecone
+
+# CPU-only torch build - the default PyPI wheel pulls in ~2GB of CUDA/GPU
+# libraries (nvidia-cublas, nvidia-cudnn, triton, ...) that this app never
+# uses and that OOM-kill small hosting instances (e.g. Render free/starter
+# tier) before the process can even bind a port.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
 sentence-transformers
 requests
 python-dotenv
