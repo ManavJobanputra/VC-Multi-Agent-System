@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -7,9 +7,8 @@ import { Mail } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
-function SignInPage({ onAuthenticated }) {
+function LoginPage({ onAuthenticated }) {
   const navigate = useNavigate();
-  const [mode, setMode] = useState('login'); // 'login' | 'signup'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
@@ -20,8 +19,7 @@ function SignInPage({ onAuthenticated }) {
     setLoading(true);
     setError(null);
     try {
-      const endpoint = mode === 'login' ? '/auth/login' : '/auth/signup';
-      const res = await fetch(`${API_BASE}${endpoint}`, {
+      const res = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -45,13 +43,9 @@ function SignInPage({ onAuthenticated }) {
         <div className="w-10 h-10 rounded-full bg-accent flex items-center justify-center mb-5">
           <Mail className="w-4.5 h-4.5 text-coral" />
         </div>
-        <h1 className="font-display text-2xl text-ink mb-1">
-          {mode === 'login' ? 'Log in' : 'Create your account'}
-        </h1>
+        <h1 className="font-display text-2xl text-ink mb-1">Log in</h1>
         <p className="text-sm text-ink-soft mb-6">
-          {mode === 'login'
-            ? "Don't have an account yet? Your first session is free."
-            : 'Your first session is free once you sign up.'}
+          Don't have an account yet? Your first session is free.
         </p>
 
         <div className="space-y-4 mb-4">
@@ -73,7 +67,7 @@ function SignInPage({ onAuthenticated }) {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder={mode === 'signup' ? 'At least 8 characters' : '••••••••'}
+              placeholder="••••••••"
             />
           </div>
         </div>
@@ -81,22 +75,18 @@ function SignInPage({ onAuthenticated }) {
         {error && <p className="text-sm text-maroon mb-4">{error}</p>}
 
         <Button type="submit" disabled={!email || !password || loading} className="w-full mb-4">
-          {loading ? 'Please wait…' : mode === 'login' ? 'Log In' : 'Sign Up'}
+          {loading ? 'Please wait…' : 'Log In'}
         </Button>
 
-        <button
-          type="button"
-          onClick={() => {
-            setMode(mode === 'login' ? 'signup' : 'login');
-            setError(null);
-          }}
-          className="w-full text-center text-sm text-ink-soft hover:text-ink underline underline-offset-4"
+        <Link
+          to="/signup"
+          className="block w-full text-center text-sm text-ink-soft hover:text-ink underline underline-offset-4"
         >
-          {mode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Log in'}
-        </button>
+          Don't have an account? Sign up
+        </Link>
       </form>
     </div>
   );
 }
 
-export default SignInPage;
+export default LoginPage;

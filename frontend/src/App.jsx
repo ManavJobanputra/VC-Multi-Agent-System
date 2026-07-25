@@ -6,7 +6,8 @@ import PersonaSelect from './pages/PersonaSelect';
 import LoadingScreen from './components/LoadingScreen';
 import ConversationInterface from './pages/ConversationInterface';
 import AdminPage from './pages/AdminPage';
-import SignInPage from './pages/SignInPage';
+import LoginPage from './pages/LoginPage';
+import SignupPage from './pages/SignupPage';
 import PaywallPage from './pages/PaywallPage';
 import SessionDetailPage from './pages/SessionDetailPage';
 import DashboardPage from './pages/DashboardPage';
@@ -185,7 +186,8 @@ function App() {
   return (
     <Routes>
       <Route path="/" element={<LandingPage onStart={handleBeginSession} isSignedIn={!!authToken} onLogout={handleLogout} />} />
-      <Route path="/signin" element={<SignInPage onAuthenticated={handleAuthenticated} />} />
+      <Route path="/signin" element={<LoginPage onAuthenticated={handleAuthenticated} />} />
+      <Route path="/signup" element={<SignupPage onAuthenticated={handleAuthenticated} />} />
       <Route
         path="/paywall"
         element={

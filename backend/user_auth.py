@@ -2,8 +2,8 @@ import hashlib
 import hmac
 import re
 import secrets
-import time
-from typing import Dict, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from db import get_conn
 
@@ -11,12 +11,6 @@ EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 SESSION_TTL_SECONDS = 30 * 24 * 60 * 60  # 30 days
 MIN_PASSWORD_LENGTH = 8
 PBKDF2_ITERATIONS = 260_000
-
-# In-memory session tokens, same lightweight pattern as admin_auth.py.
-# Lost on restart (users just log in again) - the durable state that
-# actually matters (email, password hash, free_session_used, credits)
-# lives in the DB.
-_sessions: Dict[str, dict] = {}  # token -> {"email": ..., "expires_at": ...}
 
 
 def is_valid_email(email: str) -> bool:
@@ -75,26 +69,38 @@ def log_in(email: str, password: str) -> str:
 
 
 def create_session(email: str) -> str:
+    """Persists the session token in Postgres (not in-memory) so logins
+    survive a redeploy/restart instead of silently signing everyone out,
+    and so this works if the backend ever runs more than one instance."""
     token = secrets.token_urlsafe(32)
-    _sessions[token] = {"email": email, "expires_at": time.time() + SESSION_TTL_SECONDS}
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=SESSION_TTL_SECONDS)
+    with get_conn() as conn:
+        # Opportunistic cleanup, piggybacking on a write we're already doing,
+        # so the table doesn't grow unbounded without needing a cron job.
+        conn.execute("DELETE FROM user_sessions WHERE expires_at <= CURRENT_TIMESTAMP")
+        conn.execute(
+            "INSERT INTO user_sessions (token, email, expires_at) VALUES (?, ?, ?)",
+            (token, email, expires_at),
+        )
     return token
 
 
 def revoke_session(token: Optional[str]) -> None:
-    if token:
-        _sessions.pop(token, None)
+    if not token:
+        return
+    with get_conn() as conn:
+        conn.execute("DELETE FROM user_sessions WHERE token = ?", (token,))
 
 
 def get_session_email(token: Optional[str]) -> Optional[str]:
     if not token:
         return None
-    session = _sessions.get(token)
-    if session is None:
-        return None
-    if time.time() > session["expires_at"]:
-        _sessions.pop(token, None)
-        return None
-    return session["email"]
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT email FROM user_sessions WHERE token = ? AND expires_at > CURRENT_TIMESTAMP",
+            (token,),
+        ).fetchone()
+        return row["email"] if row is not None else None
 
 
 def get_user(email: str) -> dict:
@@ -113,34 +119,48 @@ def get_user(email: str) -> dict:
         }
 
 
-def can_start_session(email: str) -> bool:
-    user = get_user(email)
-    return not user["free_session_used"] or user["credits"] > 0
-
-
-def consume_session_entitlement(email: str) -> None:
-    """Called right before starting a new evaluation. Spends the free
-    session if unused, otherwise spends one credit. Caller must have
-    already checked can_start_session() - this doesn't re-check, so it
-    will drive credits negative if called without that guard."""
+def consume_session_entitlement(email: str) -> bool:
+    """Atomically spends the free session if unused, otherwise spends one
+    credit. Returns True if an entitlement was actually spent, False if the
+    user has neither a free session nor credits left. Each UPDATE is
+    conditioned on the row still being in the spendable state, so two
+    concurrent calls for the same user can't both succeed against the same
+    entitlement (no separate check-then-write race)."""
     with get_conn() as conn:
-        row = conn.execute(
-            "SELECT free_session_used, credits FROM users WHERE email = ?", (email,)
+        free_row = conn.execute(
+            "UPDATE users SET free_session_used = 1 "
+            "WHERE email = ? AND free_session_used = 0 "
+            "RETURNING email",
+            (email,),
         ).fetchone()
-        if row is not None and not row["free_session_used"]:
-            conn.execute(
-                "UPDATE users SET free_session_used = 1 WHERE email = ?", (email,)
-            )
-        else:
-            conn.execute(
-                "UPDATE users SET credits = credits - 1 WHERE email = ?", (email,)
-            )
+        if free_row is not None:
+            return True
+
+        credit_row = conn.execute(
+            "UPDATE users SET credits = credits - 1 "
+            "WHERE email = ? AND credits > 0 "
+            "RETURNING credits",
+            (email,),
+        ).fetchone()
+        return credit_row is not None
 
 
-def grant_credits(email: str, amount: int) -> None:
+def grant_credits(email: str, amount: int, conn=None) -> None:
+    """Grants credits. Pass an existing conn (from a `with get_conn()` block)
+    to run this as part of a caller's transaction - e.g. billing.py grants
+    credits atomically with the payment-status flip, so a failure here rolls
+    back the status change too instead of leaving a 'captured' payment that
+    never actually paid out."""
+    if conn is not None:
+        _grant_credits(conn, email, amount)
+        return
     with get_conn() as conn:
-        conn.execute(
-            "INSERT INTO users (email, credits) VALUES (?, ?) "
-            "ON CONFLICT(email) DO UPDATE SET credits = users.credits + excluded.credits",
-            (email, amount),
-        )
+        _grant_credits(conn, email, amount)
+
+
+def _grant_credits(conn, email: str, amount: int) -> None:
+    conn.execute(
+        "INSERT INTO users (email, credits) VALUES (?, ?) "
+        "ON CONFLICT(email) DO UPDATE SET credits = users.credits + excluded.credits",
+        (email, amount),
+    )

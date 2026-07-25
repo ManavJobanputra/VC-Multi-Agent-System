@@ -48,9 +48,20 @@ SELF_PING_URL = os.getenv('SELF_PING_URL', f'http://localhost:{PORT}/health')
 SELF_PING_INTERVAL_MINUTES = int(os.getenv('SELF_PING_INTERVAL_MINUTES', '14'))
 SELF_PING_ENABLED = os.getenv('SELF_PING_ENABLED', 'True').lower() == 'true'
 
-# Frontend base URL - used to build the magic-link login URL that gets
-# emailed to users (points at /auth/callback on the deployed frontend).
+# Frontend base URL - the deployed frontend's origin, used to build the
+# CORS allowlist below (never sent a login link by email; users sign in
+# with a password directly on the frontend).
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
+
+# CORS - explicit allowlist instead of "*", since allow_origins=["*"] combined
+# with allow_credentials=True effectively trusts every origin with credentialed
+# requests (browsers/Starlette mirror the request's Origin header back verbatim
+# in that combination). Extra comma-separated origins (e.g. a Vercel preview
+# deployment URL) can be added via CORS_EXTRA_ORIGINS without a code change.
+CORS_ALLOWED_ORIGINS = list(dict.fromkeys(
+    [FRONTEND_URL, 'http://localhost:5173', 'http://127.0.0.1:5173']
+    + [o.strip() for o in os.getenv('CORS_EXTRA_ORIGINS', '').split(',') if o.strip()]
+))
 
 # Email (magic-link login) Configuration
 # Tries SMTP first if SMTP_HOST is set, then Resend if RESEND_API_KEY is

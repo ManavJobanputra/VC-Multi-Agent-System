@@ -68,26 +68,29 @@ def verify_webhook_signature(payload: bytes, signature: str) -> bool:
 def handle_payment_captured(order_id: str, payment_id: str) -> None:
     """Grants credits for the order tied to this webhook event, exactly
     once - re-deliveries of the same event are a no-op since the payment
-    row is only ever moved from 'created' to 'captured' the first time."""
+    row is only ever moved from 'created' to 'captured' the first time.
+    The status flip and credit grant happen in one transaction so a
+    failure granting credits rolls back the status flip too, instead of
+    leaving the payment marked 'captured' with no credits ever granted
+    (which would make every future webhook retry a silent no-op)."""
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT email, credits_granted, status FROM payments WHERE razorpay_order_id = ?",
-            (order_id,),
+            "UPDATE payments SET status = 'captured', razorpay_payment_id = ? "
+            "WHERE razorpay_order_id = ? AND status != 'captured' "
+            "RETURNING email, credits_granted",
+            (payment_id, order_id),
         ).fetchone()
 
         if row is None:
-            logger.warning(f"Webhook for unknown order_id {order_id}")
-            return
+            exists = conn.execute(
+                "SELECT 1 FROM payments WHERE razorpay_order_id = ?", (order_id,)
+            ).fetchone()
+            if exists is None:
+                logger.warning(f"Webhook for unknown order_id {order_id}")
+            return  # already captured (re-delivery) or unknown order
 
-        if row["status"] == "captured":
-            return  # already processed, avoid double-granting credits
-
-        conn.execute(
-            "UPDATE payments SET status = 'captured', razorpay_payment_id = ? WHERE razorpay_order_id = ?",
-            (payment_id, order_id),
-        )
         email = row["email"]
         credits = row["credits_granted"]
+        grant_credits(email, credits, conn=conn)
 
-    grant_credits(email, credits)
     logger.info(f"Granted {credits} credit(s) to {email} for order {order_id}")

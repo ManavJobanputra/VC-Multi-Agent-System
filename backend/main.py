@@ -12,7 +12,7 @@ from pydantic import BaseModel
 import logging
 
 # Load configuration from .env
-from config import HOST, PORT, DEBUG, SELF_PING_URL, SELF_PING_INTERVAL_MINUTES, SELF_PING_ENABLED
+from config import HOST, PORT, DEBUG, SELF_PING_URL, SELF_PING_INTERVAL_MINUTES, SELF_PING_ENABLED, CORS_ALLOWED_ORIGINS
 
 from mistral_client import MistralClient
 from pinecone_manager import PineconeManager
@@ -81,7 +81,7 @@ app = FastAPI(title="VC Multi-Agent System")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -730,12 +730,11 @@ def _store_agent_results_to_chroma(session_id: str, pitch_data: Dict, evaluation
 
 @app.post("/evaluate_pitch")
 def evaluate_pitch(req: EvaluatePitchRequest, email: str = Depends(require_user)):
-    if not user_auth.can_start_session(email):
+    if not user_auth.consume_session_entitlement(email):
         raise HTTPException(
             status_code=402,
             detail="No sessions remaining. Purchase a credit pack to start another evaluation.",
         )
-    user_auth.consume_session_entitlement(email)
 
     global _evaluation_progress
     _evaluation_progress = {}

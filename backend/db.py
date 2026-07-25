@@ -35,6 +35,9 @@ def get_conn():
 
 def init_db():
     with get_conn() as conn:
+        # One-time cleanup: magic-link sign-in was replaced by password auth
+        # and this table was never read from again - drop the leftover.
+        conn.execute("DROP TABLE IF EXISTS magic_link_tokens")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 email TEXT PRIMARY KEY,
@@ -45,11 +48,18 @@ def init_db():
             )
         """)
         conn.execute("""
-            CREATE TABLE IF NOT EXISTS magic_link_tokens (
+            CREATE TABLE IF NOT EXISTS user_sessions (
                 token TEXT PRIMARY KEY,
-                email TEXT NOT NULL,
-                expires_at TEXT NOT NULL,
-                used INTEGER NOT NULL DEFAULT 0,
+                email TEXT NOT NULL REFERENCES users(email),
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_user_sessions_email ON user_sessions(email)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS admin_sessions (
+                token TEXT PRIMARY KEY,
+                expires_at TIMESTAMP NOT NULL,
                 created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -94,6 +104,7 @@ def init_db():
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user_email ON sessions(user_email)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_session_messages_session_id ON session_messages(session_id)")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_payments_razorpay_order_id ON payments(razorpay_order_id)")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS progress_reports (
                 user_email TEXT PRIMARY KEY,

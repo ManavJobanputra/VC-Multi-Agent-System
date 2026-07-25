@@ -1,12 +1,12 @@
 import hmac
 import secrets
-import time
-from typing import Dict, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from config import ADMIN_PASSWORD
+from db import get_conn
 
 _SESSION_TTL_SECONDS = 12 * 60 * 60  # 12 hours
-_sessions: Dict[str, float] = {}  # token -> expiry unix timestamp
 
 
 def verify_password(password: str) -> bool:
@@ -16,22 +16,30 @@ def verify_password(password: str) -> bool:
 
 
 def create_session() -> str:
+    """Persisted in Postgres (not in-memory) so an admin session survives a
+    redeploy/restart instead of silently logging the admin out."""
     token = secrets.token_urlsafe(32)
-    _sessions[token] = time.time() + _SESSION_TTL_SECONDS
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=_SESSION_TTL_SECONDS)
+    with get_conn() as conn:
+        conn.execute("DELETE FROM admin_sessions WHERE expires_at <= CURRENT_TIMESTAMP")
+        conn.execute(
+            "INSERT INTO admin_sessions (token, expires_at) VALUES (?, ?)",
+            (token, expires_at),
+        )
     return token
 
 
 def verify_session(token: Optional[str]) -> bool:
     if not token:
         return False
-    expiry = _sessions.get(token)
-    if expiry is None:
-        return False
-    if time.time() > expiry:
-        _sessions.pop(token, None)
-        return False
-    return True
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT 1 FROM admin_sessions WHERE token = ? AND expires_at > CURRENT_TIMESTAMP",
+            (token,),
+        ).fetchone()
+        return row is not None
 
 
 def revoke_session(token: str):
-    _sessions.pop(token, None)
+    with get_conn() as conn:
+        conn.execute("DELETE FROM admin_sessions WHERE token = ?", (token,))
