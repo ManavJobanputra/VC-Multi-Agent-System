@@ -6,12 +6,25 @@ import requests
 
 logger = logging.getLogger(__name__)
 
+IST = timezone(timedelta(hours=5, minutes=30))
+QUIET_HOURS_START_IST = 0  # 12am IST
+QUIET_HOURS_END_IST = 9  # 9am IST
+
+
+def _in_quiet_hours(now_utc: datetime) -> bool:
+    """True between 12am-9am IST, when the app is intentionally allowed to
+    spin down on free-tier hosts instead of being kept alive."""
+    ist_hour = now_utc.astimezone(IST).hour
+    return QUIET_HOURS_START_IST <= ist_hour < QUIET_HOURS_END_IST
+
 
 class SelfPingScheduler:
     """Periodically pings a URL (intended: this app's own public /health
     endpoint) to stop free-tier hosts from spinning the app down after a
-    period of no external traffic. Runs in a daemon thread so it never
-    blocks request handling or app shutdown."""
+    period of no external traffic. Skips pinging between 12am-9am IST so
+    the app is allowed to sleep overnight instead of burning free-tier
+    hours with no one around to use it. Runs in a daemon thread so it
+    never blocks request handling or app shutdown."""
 
     def __init__(self, url: str, interval_minutes: int, enabled: bool = True):
         self.url = url
@@ -58,7 +71,7 @@ class SelfPingScheduler:
             interrupted = self._stop_event.wait(self.interval_seconds)
             if interrupted:
                 break
-            if self._enabled:
+            if self._enabled and not _in_quiet_hours(datetime.now(timezone.utc)):
                 self._ping()
 
     def _ping(self):

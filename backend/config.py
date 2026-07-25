@@ -45,7 +45,7 @@ ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', '')
 # process never reaches that edge, so it won't reset their idle timer.
 # localhost is only useful here for local testing that the pinger works.
 SELF_PING_URL = os.getenv('SELF_PING_URL', f'http://localhost:{PORT}/health')
-SELF_PING_INTERVAL_MINUTES = int(os.getenv('SELF_PING_INTERVAL_MINUTES', '13'))
+SELF_PING_INTERVAL_MINUTES = int(os.getenv('SELF_PING_INTERVAL_MINUTES', '14'))
 SELF_PING_ENABLED = os.getenv('SELF_PING_ENABLED', 'True').lower() == 'true'
 
 # Frontend base URL - used to build the magic-link login URL that gets
