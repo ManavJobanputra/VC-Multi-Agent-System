@@ -1,5 +1,6 @@
 import json
 import logging
+import threading
 from uuid import uuid4
 
 import torch
@@ -42,9 +43,33 @@ class PineconeManager:
     *namespace* within one shared index rather than a separate Chroma
     collection - namespaces are the idiomatic (and free-tier-friendly)
     way to keep multiple logical collections in Pinecone.
+
+    A true singleton per namespace: PineconeManager(collection_name=X)
+    always returns the same instance for a given X, so a call site that
+    forgets to pass in an already-built shared instance (main.py wires
+    them explicitly, but nothing enforces that at every call site) gets
+    the cached instance back instead of silently loading a second copy of
+    the SentenceTransformer + Pinecone client - the exact mistake that
+    OOM-killed a Render deploy once already.
     """
 
+    _instances: dict = {}
+    _lock = threading.Lock()
+
+    def __new__(cls, collection_name=None):
+        namespace = collection_name or "vc_pitches"
+        with cls._lock:
+            if namespace not in cls._instances:
+                instance = super().__new__(cls)
+                instance._initialized = False
+                cls._instances[namespace] = instance
+            return cls._instances[namespace]
+
     def __init__(self, collection_name=None):
+        if self._initialized:
+            return
+        self._initialized = True
+
         self.namespace = collection_name or "vc_pitches"
 
         self.client = Pinecone(api_key=PINECONE_API_KEY)

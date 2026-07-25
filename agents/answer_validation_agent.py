@@ -13,22 +13,39 @@ class AnswerValidationAgent(BaseAgent):
         self.mistral_client = MistralClient()
         self.pinecone_manager = pinecone_manager or PineconeManager()
 
-    def validate_answer(self, question: str, answer: str, session_id: str, pitch_context: Dict) -> Dict:
+    def validate_answer(
+        self,
+        question: str,
+        answer: str,
+        session_id: str,
+        pitch_context: Dict,
+        prefetched_results: Optional[List[Dict]] = None,
+    ) -> Dict:
         """
         Validate founder's answer against:
         1. Market analysis data
         2. Agent findings stored in Chroma
         3. Industry benchmarks
         4. Pitch context
-        
+
         Returns validation result with recommendation for next action.
+
+        Pass prefetched_results (e.g. the RAG results the caller already
+        pulled for its own chat turn) to skip this agent's own Pinecone
+        query entirely - trades a bit of query precision (prefetched
+        results were fetched with a different query) for removing a full
+        embedding + vector-search round trip on every chat turn. Falls back
+        to its own query when called standalone (e.g. via process()).
         """
         logger.info(f"Validating answer for session {session_id}")
-        
-        # Step 1: Retrieve relevant market data and agent analyses from Chroma
-        query = f"{question} {answer} {pitch_context.get('industry', '')} {pitch_context.get('company_name', '')}"
-        rag_results = self.pinecone_manager.search(query, limit=10, session_filter=session_id)
-        
+
+        if prefetched_results is not None:
+            rag_results = prefetched_results
+        else:
+            # Step 1: Retrieve relevant market data and agent analyses from Chroma
+            query = f"{question} {answer} {pitch_context.get('industry', '')} {pitch_context.get('company_name', '')}"
+            rag_results = self.pinecone_manager.search(query, limit=10, session_filter=session_id)
+
         # Organize retrieved context
         agent_findings = []
         market_data = []

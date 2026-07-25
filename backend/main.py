@@ -1,5 +1,6 @@
 import sys
 import os
+import re
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
@@ -430,7 +431,17 @@ def chat(req: ChatRequest, email: str = Depends(require_user)):
                 "- Team execution risk\n\n"
                 
                 f"{context_prompt}"
-                "REMEMBER: ONE QUESTION ONLY. Use validation analysis. Be direct but data-driven."
+                "REMEMBER: ONE QUESTION ONLY. Use validation analysis. Be direct but data-driven.\n\n"
+
+                "4. STATUS TAG (required, machine-readable, stripped before the founder sees your "
+                "message - it costs you nothing extra and is not one of your questions):\n"
+                "On its own final line, output exactly one of:\n"
+                "[[STATUS: CONTINUE]]\n"
+                "[[STATUS: END_CONVERSATION]]\n\n"
+                "Use END_CONVERSATION only once you've gathered data on MOST of: revenue/traction "
+                "metrics, unit economics (CAC/LTV/payback/margins), TAM validation, customer traction "
+                "evidence, competitive positioning, team execution risk, product-market fit. "
+                "Otherwise use CONTINUE."
             ),
         },
     ]
@@ -448,7 +459,8 @@ def chat(req: ChatRequest, email: str = Depends(require_user)):
                 question=last_question,
                 answer=req.message,
                 session_id=session_id,
-                pitch_context=req.pitch_context or {}
+                pitch_context=req.pitch_context or {},
+                prefetched_results=rag_results,
             )
             logger.info(f"Answer validation completed: {validation_result.get('validation', '')[:200]}")
             
@@ -468,9 +480,19 @@ def chat(req: ChatRequest, email: str = Depends(require_user)):
     else:
         messages.append({"role": "user", "content": user_content})
     
-    response_text = mistral_client.call_openrouter_api(messages)
-    if not response_text.strip():
+    raw_response = mistral_client.call_openrouter_api(messages)
+    if not raw_response.strip():
         raise HTTPException(status_code=502, detail="Failed to get a response from the AI model")
+
+    # Pull the end-of-conversation decision out of the same completion that
+    # generated the response, instead of a second dedicated LLM call - the
+    # model already has full context loaded, so asking it to also emit this
+    # one bit of state costs nothing extra. Defaults to CONTINUE if the tag
+    # is missing/malformed, so a parsing hiccup never prematurely ends a
+    # conversation.
+    status_match = re.search(r"\[\[STATUS:\s*(CONTINUE|END_CONVERSATION)\s*\]\]\s*$", raw_response.strip())
+    conversation_ended = bool(status_match and status_match.group(1) == "END_CONVERSATION")
+    response_text = raw_response[:status_match.start()].strip() if status_match else raw_response.strip()
 
     # Store Q&A pair with validation in structured format to Chroma
     try:
@@ -513,44 +535,6 @@ def chat(req: ChatRequest, email: str = Depends(require_user)):
     except Exception as e:
         logger.warning(f"Could not store Q&A pair to Chroma: {e}")
     
-    # Check if agent thinks they have enough info to end conversation
-    history_summary = "\n".join([f"{msg.get('role')}: {msg.get('content')[:150]}..." for msg in req.history[-5:]])
-    end_check_messages = [
-        {
-            "role": "system",
-            "content": (
-                "You are a venture investor deciding whether you have ENOUGH CRITICAL INFORMATION for a comprehensive investment decision.\n\n"
-                "You should ONLY say 'END_CONVERSATION' if you have gathered data on MOST of these key areas:\n"
-                "- Revenue/traction metrics (current ARR, MoM growth, YoY trajectory)\n"
-                "- Unit economics (CAC, LTV, payback period, gross margins)\n"
-                "- TAM validation (both top-down and bottom-up analysis)\n"
-                "- Customer traction (actual contracts, LOIs, or strong pipeline evidence)\n"
-                "- Competitive positioning and defensibility\n"
-                "- Team capabilities and execution risk\n"
-                "- Product-market fit indicators\n\n"
-                "If you're MISSING critical metrics or data on multiple areas, reply with 'CONTINUE'\n"
-                "Only reply with EXACTLY 'END_CONVERSATION' (nothing else) when you truly have enough to make a decision.\n"
-                "Only reply with EXACTLY 'CONTINUE' (nothing else) when you need more info."
-            )
-        },
-        {"role": "user", "content": f"Full conversation so far:\n{history_summary}\n\nDo you have enough information to make a comprehensive investment decision?"}
-    ]
-    
-    end_decision = mistral_client.call_openrouter_api(end_check_messages).strip().upper()
-    conversation_ended = "END_CONVERSATION" in end_decision
-    
-    # Store in Chroma for RAG retrieval with SESSION ID
-    try:
-        pinecone_manager.upsert_data(
-            [req.message, response_text],
-            [
-                {"type": "user_message", "conversation": True, "session_id": session_id, "content": req.message},
-                {"type": "assistant_response", "conversation": True, "session_id": session_id, "content": response_text}
-            ]
-        )
-    except Exception as e:
-        logger.warning(f"Could not store conversation to Chroma: {e}")
-
     try:
         session_store.add_message(session_id, "user", req.message)
         session_store.add_message(session_id, "assistant", response_text)

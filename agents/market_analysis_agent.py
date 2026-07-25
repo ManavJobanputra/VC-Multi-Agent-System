@@ -10,8 +10,15 @@ from agents.base_agent import BaseAgent
 from backend.pinecone_manager import PineconeManager
 from backend.config import TAVILY_API_KEY
 from backend.mistral_client import MistralClient
+from backend.db import get_conn
 
 logger = logging.getLogger(__name__)
+
+# Market facts (TAM, competitors, pricing) don't meaningfully change
+# hour-to-hour, so caching by industry+question avoids re-spending Tavily
+# credits (and the signal-extraction LLM call) researching the same thing
+# for every pitch in a popular industry.
+CACHE_TTL_DAYS = 7
 
 
 class MarketAnalysisAgent(BaseAgent):
@@ -209,12 +216,59 @@ Rules:
             logger.error(f"Chroma upsert failed: {e}")
 
     # ==============================================================
+    # 6a. Cache lookups - keyed by industry + normalized question
+    # ==============================================================
+    @staticmethod
+    def _cache_key(industry: str, question: str) -> str:
+        normalized = re.sub(r"\s+", " ", question.strip().lower())
+        return f"{(industry or '').strip().lower()}::{normalized}"
+
+    def _get_cached_signals(self, cache_key: str) -> Optional[Dict]:
+        try:
+            with get_conn() as conn:
+                row = conn.execute(
+                    "SELECT signals_json FROM market_research_cache "
+                    "WHERE cache_key = ? "
+                    "AND created_at > CURRENT_TIMESTAMP - (INTERVAL '1 day' * ?)",
+                    (cache_key, CACHE_TTL_DAYS),
+                ).fetchone()
+                return json.loads(row["signals_json"]) if row is not None else None
+        except Exception as e:
+            logger.warning(f"Market research cache lookup failed: {e}")
+            return None
+
+    def _set_cached_signals(self, cache_key: str, signals: Dict) -> None:
+        try:
+            with get_conn() as conn:
+                conn.execute(
+                    "INSERT INTO market_research_cache (cache_key, signals_json) VALUES (?, ?) "
+                    "ON CONFLICT(cache_key) DO UPDATE SET "
+                    "signals_json = excluded.signals_json, created_at = CURRENT_TIMESTAMP",
+                    (cache_key, json.dumps(signals)),
+                )
+        except Exception as e:
+            logger.warning(f"Market research cache write failed: {e}")
+
+    # ==============================================================
     # 6. Process ONE question (runs in parallel)
     # ==============================================================
     def _process_single_question(self, question: str, pitch_data: Dict) -> Dict:
+        cache_key = self._cache_key(pitch_data.get("industry", ""), question)
+        cached_signals = self._get_cached_signals(cache_key)
+        if cached_signals is not None:
+            logger.info(f"Market research cache hit: {question}")
+            finding = {
+                "question": question,
+                "sources": cached_signals.get("sources", []),
+                "signals": cached_signals,
+            }
+            return {"finding": finding, "signals": cached_signals}
+
         research = self._research_question(question)
         signals = self._extract_market_signals(research)
         self._store_findings(question, signals, pitch_data)
+        if not signals.get("insufficient_data"):
+            self._set_cached_signals(cache_key, signals)
 
         finding = {
             "question": question,
