@@ -1,25 +1,33 @@
 import os
-import sqlite3
 from contextlib import contextmanager
 
-# SQLite for now - simplest thing that works locally. NOTE: this has the
-# exact same problem embedded Chroma had before the Pinecone migration -
-# local disk doesn't survive deployment to platforms with ephemeral
-# filesystems or multiple instances. Before taking real payments in
-# production, this needs to move to a hosted Postgres (Supabase/Neon free
-# tier are the natural fits) so paid users never lose their credits on a
-# redeploy. Fine for local development and testing the flow end-to-end now.
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'app.db')
+import psycopg2
+import psycopg2.extras
+
+# Hosted Postgres (Neon/Supabase free tier) - survives redeploys and works
+# across multiple instances, unlike the SQLite file this used to be.
+DATABASE_URL = os.environ["DATABASE_URL"]
+
+
+class _ConnWrapper:
+    """Thin shim so callers can keep using sqlite3's conn.execute(sql, params)
+    -> cursor pattern against a real psycopg2 connection."""
+
+    def __init__(self, pg_conn):
+        self._conn = pg_conn
+
+    def execute(self, sql, params=()):
+        cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(sql.replace("?", "%s"), params)
+        return cur
 
 
 @contextmanager
 def get_conn():
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
+    conn = psycopg2.connect(DATABASE_URL)
     try:
-        yield conn
+        wrapper = _ConnWrapper(conn)
+        yield wrapper
         conn.commit()
     finally:
         conn.close()
@@ -33,21 +41,16 @@ def init_db():
                 password_hash TEXT,
                 free_session_used INTEGER NOT NULL DEFAULT 0,
                 credits INTEGER NOT NULL DEFAULT 0,
-                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        # Migration for DBs created before password_hash existed (this app
-        # predates password auth - it launched with email magic links).
-        existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
-        if "password_hash" not in existing_columns:
-            conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS magic_link_tokens (
                 token TEXT PRIMARY KEY,
                 email TEXT NOT NULL,
                 expires_at TEXT NOT NULL,
                 used INTEGER NOT NULL DEFAULT 0,
-                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         """)
         conn.execute("""
@@ -60,7 +63,7 @@ def init_db():
                 amount_inr INTEGER NOT NULL,
                 credits_granted INTEGER NOT NULL,
                 status TEXT NOT NULL DEFAULT 'created',
-                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         """)
         conn.execute("""
@@ -76,17 +79,17 @@ def init_db():
                 analysis TEXT,
                 investment_score INTEGER,
                 status TEXT NOT NULL DEFAULT 'active',
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         """)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS session_messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 session_id TEXT NOT NULL REFERENCES sessions(session_id),
                 role TEXT NOT NULL,
                 content TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user_email ON sessions(user_email)")
@@ -96,6 +99,6 @@ def init_db():
                 user_email TEXT PRIMARY KEY,
                 report_json TEXT NOT NULL,
                 session_count INTEGER NOT NULL,
-                generated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                generated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
         """)

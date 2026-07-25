@@ -1,5 +1,6 @@
 fastapi
 uvicorn[standard]
+psycopg2-binary
 pinecone
 sentence-transformers
 requests

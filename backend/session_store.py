@@ -43,7 +43,7 @@ def add_message(session_id: str, role: str, content: str) -> None:
             (session_id, role, content),
         )
         conn.execute(
-            "UPDATE sessions SET updated_at = datetime('now') WHERE session_id = ?",
+            "UPDATE sessions SET updated_at = CURRENT_TIMESTAMP WHERE session_id = ?",
             (session_id,),
         )
 
@@ -53,7 +53,7 @@ def save_analysis(session_id: str, analysis: Dict[str, Any], investment_score: O
         conn.execute(
             """
             UPDATE sessions
-            SET analysis = ?, investment_score = ?, status = 'completed', updated_at = datetime('now')
+            SET analysis = ?, investment_score = ?, status = 'completed', updated_at = CURRENT_TIMESTAMP
             WHERE session_id = ?
             """,
             (json.dumps(analysis), investment_score, session_id),
@@ -154,7 +154,7 @@ def save_progress_report(user_email: str, report: Dict[str, Any], session_count:
             ON CONFLICT(user_email) DO UPDATE SET
                 report_json = excluded.report_json,
                 session_count = excluded.session_count,
-                generated_at = datetime('now')
+                generated_at = CURRENT_TIMESTAMP
             """,
             (user_email, json.dumps(report), session_count),
         )
